@@ -1,0 +1,46 @@
+[training]
+training_directory = "foobar"
+validation_directory = "bazqux"
+epochs = 10
+batchsize = 1000
+
+[post]
+model = "Turner"
+max_helix_length = 30
+
+[optimizer]
+optimizer = "Adam"
+lr = 1e3
+betas = [0.9, 0.999]
+eps = 1e-8
+weight_decay = 0
+amsgrad = false
+
+[[arch]]
+layer_type = "Conv2d"
+out_channels = 96
+kernel_size = 2
+stride = 1
+padding = 0
+padding_mode = 'zeros'
+dilation = 1
+groups = 1
+bias = true
+
+[[arch]]
+layer_type = "LSTM"
+kernel_size = -1
+stride = -1
+padding = -1
+dilation = -1
+return_indices = true
+ceil_mode = true
+
+[[arch]]
+layer_type = "MaxPool2d"
+hidden_size = -1
+num_layers = 1
+bias = true
+batch_first = false
+dropout = 0
+bidirectional = false

@@ -1,8 +1,9 @@
 [training]
-training_directory = "foobar"
-validation_directory = "bazqux"
+training_list = "training-list.lst"
+validation_list = "validation-list.lst"
 epochs = 10
 batchsize = 1000
+checkpoint = "checkpoint.pt"
 
 [post]
 model = "Turner"
@@ -16,7 +17,10 @@ eps = 1e-8
 weight_decay = 0
 amsgrad = false
 
-[[arch]]
+[activation]
+activation = "CELU"
+
+[[layer]]
 layer_type = "Conv2d"
 out_channels = 96
 kernel_size = 2
@@ -27,7 +31,7 @@ dilation = 1
 groups = 1
 bias = true
 
-[[arch]]
+[[layer]]
 layer_type = "LSTM"
 kernel_size = -1
 stride = -1
@@ -36,7 +40,7 @@ dilation = -1
 return_indices = true
 ceil_mode = true
 
-[[arch]]
+[[layer]]
 layer_type = "MaxPool2d"
 hidden_size = -1
 num_layers = 1

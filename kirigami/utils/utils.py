@@ -1,26 +1,9 @@
 from collections import deque
 import re
-from constants import ENCODINGS
 
-def fasta2mat(sequence): 
-    ret = []
-    for char in sequence:
-        ret.append(constants.ENCODINGS[char])
-    return ret
-
-def parse_dot_bracket(text):
-    sequence = re.search("[AUCG]{2,}", text).group()
-    ct_str = re.search("[(.)]+", text).group() 
-    stack = deque()
-    ct_list = []
-    for i, char in enumerate(ct_str):
-        i += 1 # 1- rather than 0-index
-        if char == "(":
-            stack.append(i)
-        if char == ")":
-            j = stack.pop()
-            ct_list.append((j, i))
-    return sequence, ct_list, len(ct_list)
+def embed(seq_str):   
+    seq_list = torch.stack([BASE_DICT[char] for char in seq_str.lower()])
+    return torch.unsqueeze(seq_list, 2)
 
 def read_label(infile):
     label_list=[]

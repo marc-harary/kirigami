@@ -1,9 +1,16 @@
 from collections import deque
 import re
 
-def embed(seq_str):   
+def embed_fasta(seq_str):   
     seq_list = torch.stack([BASE_DICT[char] for char in seq_str.lower()])
     return torch.unsqueeze(seq_list, 2)
+
+def embed_bpseq(bpseq_str):
+    lines = bpseq_str.splitlines()
+    idx_str = [int(line.split()[-1]) for line in lines]
+    idx_ten = torch.Tensor(idx_str).to(torch.int64)
+    ret = F.one_hot(idx_ten, num_classes=len(idx_ten)+1)
+    return ret[:,1:]
 
 def read_label(infile):
     label_list=[]

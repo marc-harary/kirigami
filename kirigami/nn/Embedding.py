@@ -24,7 +24,7 @@ class SequenceEmbedding(AbstractEmbedding):
         return torch.stack([BASE_DICT[char] for char in sequence.lower()])
     
     @dispatch(list)
-    def forward(self, sequences) -> torch.Tensor:
+    def forward(self, sequences) -> Tuple[torch.Tensor, List[int]]:
         lengths = [len(seq) for seq in sequences]
         tensors = [self.forward(seq) for seq in sequences]
         embed = nn.utils.rnn.pad_sequence(tensors, batch_first=True)
@@ -47,7 +47,7 @@ class LabelEmbedding(AbstractEmbedding):
         return ret
     
     @dispatch(list)
-    def forward(self, labels) -> List[torch.Tensor]:
+    def forward(self, labels) -> Tuple[List[torch.Tensor], List[int]]:
         embed = [self.forward(label) for label in labels]
         lengths = [len(mat) for mat in embed]
         return embed, lengths

@@ -1,13 +1,10 @@
 from typing import *
 from abc import *
 import re
-
 from multipledispatch import dispatch
 import torch
 from torch import nn
-
 from ..utils.constants import *
-
 
 class AbstractEmbedding(ABC, nn.Module):
     @dispatch(str)
@@ -17,7 +14,12 @@ class AbstractEmbedding(ABC, nn.Module):
     
     @dispatch(list)
     @abstractmethod
-    def forward(self, data_list: List[str]) -> List[torch.Tensor]:
+    def forward(self, data_list: List[str]) -> Union[torch.Tensor, List[torch.Tensor]]:
+        pass
+
+    @dispatch(list)
+    @abstractmethod
+    def forward(self, data_list: List[str], max_pad: int) -> Union[torch.Tensor, List[torch.Tensor]]:
         pass
 
 class SequenceEmbedding(AbstractEmbedding):
@@ -26,7 +28,7 @@ class SequenceEmbedding(AbstractEmbedding):
         return torch.stack([BASE_DICT[char] for char in sequence.lower()])
     
     @dispatch(list)
-    def forward(self, sequences):
+    def forward(self, sequences) -> torch.Tensor:
         lengths = [len(seq) for seq in sequences]
         tensors = [self.forward(seq) for seq in sequences]
         embed = nn.utils.rnn.pad_sequence(tensors, batch_first=True)
@@ -48,7 +50,7 @@ class LabelEmbedding(AbstractEmbedding):
         return ret
     
     @dispatch(list)
-    def forward(self, labels):
+    def forward(self, labels) -> List[torch.Tensor]:
         embed = [self.forward(label) for label in labels]
         lengths = [len(mat) for mat in embed]
         return embed, lengths

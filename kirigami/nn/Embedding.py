@@ -14,7 +14,7 @@ class AbstractEmbedding(ABC, nn.Module):
     
     @dispatch(list)
     @abstractmethod
-    def forward(self, data_list: List[str]) -> Union[torch.Tensor, List[torch.Tensor]]:
+    def forward(self, data_list: List[str]) -> Tuple[Union[torch.Tensor, List[torch.Tensor]], List[int]]:
         pass
 
 class SequenceEmbedding(AbstractEmbedding):

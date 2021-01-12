@@ -17,11 +17,6 @@ class AbstractEmbedding(ABC, nn.Module):
     def forward(self, data_list: List[str]) -> Union[torch.Tensor, List[torch.Tensor]]:
         pass
 
-    @dispatch(list)
-    @abstractmethod
-    def forward(self, data_list: List[str], max_pad: int) -> Union[torch.Tensor, List[torch.Tensor]]:
-        pass
-
 class SequenceEmbedding(AbstractEmbedding):
     @dispatch(str)
     def forward(self, sequence): 

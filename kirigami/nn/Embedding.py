@@ -18,6 +18,7 @@ class AbstractEmbedding(ABC, nn.Module):
         pass
 
 class SequenceEmbedding(AbstractEmbedding):
+    '''Embeds either single or multiple FASTA sequences as one-hot tensors'''
     @dispatch(str)
     def forward(self, sequence): 
         return torch.stack([BASE_DICT[char] for char in sequence.lower()])
@@ -31,6 +32,7 @@ class SequenceEmbedding(AbstractEmbedding):
         return embed, lengths
 
 class LabelEmbedding(AbstractEmbedding):
+    '''Embeds either single or multiple `bpseq` files as one-hot tensors'''
     @dispatch(str)
     def forward(self, label):
         lines = label.splitlines()

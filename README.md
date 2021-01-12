@@ -1,2 +1,2 @@
-# deepfold
+# Kirigami
 Repository for PyTorch scripts.

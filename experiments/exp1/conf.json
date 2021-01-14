@@ -5,10 +5,10 @@
     },
 
 	"training": {
-		"epochs": 10,
-		"batchsize": 1000,
+        "epochs": 10,
+        "batchsize": 1000,
         "checkpoint": "checkpoint.pt",
-		"loss": "CrossEntropy"
+        "loss": "CrossEntropy"
 	},
     
     "post": {

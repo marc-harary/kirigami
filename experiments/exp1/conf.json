@@ -37,18 +37,18 @@
                 "padding": 2
             }
         },
-		{
-			"layer": "Conv2d",
-			"params": {
-				"in_channels": 128,
-				"out_channels": 1,
-				"kernel_size": 1,
-				"padding": 0
-			}
-		},
-		{
-		    "layer": "Sigmoid",
-		    "params": {}		
-		}
-	]
+        {
+            "layer": "Conv2d",
+            "params": {
+                "in_channels": 128,
+                "out_channels": 1,
+                "kernel_size": 1,
+                "padding": 0
+            }
+        },
+        {
+            "layer": "Sigmoid",
+            "params": {}		
+        }
+    ]
 }

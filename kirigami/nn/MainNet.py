@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from .Maximizer import Maximizer
 
 class MainNet(nn.Module):
     def __init__(self, dict_list):
@@ -9,7 +10,8 @@ class MainNet(nn.Module):
             layer_class = getattr(nn, layer_func)
             layer_obj = layer_class(**layer_dict['params'])
             setattr(self, f'layer{i}', layer_obj)
-        self.n_layers = i
+        setattr(self, f'layer{i+1}', Maximizer())
+        self.n_layers = i+1
         
     def forward(self, input):
         ret = input

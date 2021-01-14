@@ -32,9 +32,9 @@
             "layer": "Conv2d",
             "params": {
                 "in_channels": 8,
-				"out_channels": 128, 
-				"kernel_size": 5,
-				"padding": 2
+                "out_channels": 128, 
+                "kernel_size": 5,
+                "padding": 2
             }
         },
 		{
@@ -47,8 +47,8 @@
 			}
 		},
 		{
-			"layer": "Sigmoid",
-			"params": {}		
+		    "layer": "Sigmoid",
+		    "params": {}		
 		}
 	]
 }

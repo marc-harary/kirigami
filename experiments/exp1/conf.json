@@ -4,7 +4,7 @@
         "validation_list": "validation-list.lst"
     },
 
-	"training": {
+    "training": {
         "epochs": 10,
         "batchsize": 1000,
         "checkpoint": "checkpoint.pt",

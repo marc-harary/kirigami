@@ -1,18 +1,18 @@
+from sys import modules
 import torch
 from torch import nn
-from .Maximizer import Maximizer
+from . import *
 
 class MainNet(nn.Module):
     def __init__(self, dict_list):
         super(MainNet, self).__init__()
         for i, layer_dict in enumerate(dict_list):
-            layer_func = layer_dict['layer']
-            layer_class = getattr(nn, layer_func)
-            layer_obj = layer_class(**layer_dict['params'])
+            layer_module = modules[layer_dict['module']]
+            layer_class = getattr(layer_module, layer_dict['class'])
+            layer_obj = layer_class(**layer_dict['kwargs'])
             setattr(self, f'layer{i}', layer_obj)
-        setattr(self, f'layer{i+1}', Maximizer())
-        self.n_layers = i+1
-        
+        self.n_layers = i
+
     def forward(self, input):
         ret = input
         for i in range(self.n_layers + 1):

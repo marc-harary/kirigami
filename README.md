@@ -5,4 +5,4 @@ Repository for PyTorch scripts.
 * pytorch (>=1.7)
 * C++17 compatible compiler
 ## Credits
-Thermodynamic subroutines sourced from https://github.com/keio-bioinformatics/mxfold2
+Thermodynamic subroutines sourced from https://github.com/keio-bioinformatics/mxfold2.

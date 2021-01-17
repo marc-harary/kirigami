@@ -7,10 +7,11 @@ class MainNet(nn.Module):
     def __init__(self, dict_list):
         super(MainNet, self).__init__()
         for i, layer_dict in enumerate(dict_list):
-            layer_module = modules[layer_dict['module']]
-            layer_class = getattr(layer_module, layer_dict['class'])
-            layer_obj = layer_class(**layer_dict['kwargs'])
-            setattr(self, f'layer{i}', layer_obj)
+            module_name, class_name = layer_dict['class'].rsplit('.', 1)
+            module_ptr = modules[module_name]
+            class_ptr = getattr(module_ptr, class_name)
+            obj_ptr = class_ptr(**layer_dict['kwargs'])
+            setattr(self, f'layer{i}', obj_ptr)
         self.n_layers = i
 
     def forward(self, input):

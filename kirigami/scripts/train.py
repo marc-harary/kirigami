@@ -1,15 +1,17 @@
 import argparse
+import os
 import json
 from munch import munchify
 import torch
 from torch import nn
+from torch.utils.data import *
 from ..nn.MainNet import *
-from ..nn.Loss import *
 from ..nn.Embedding import *
+from ..utils.data_utils import *
+
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-q', help='quiet', type=bool, default=False)
     parser.add_argument('--conf', help='path to configuration file', type=str)
     args = parser.parse_args()
 
@@ -18,28 +20,41 @@ def main():
         conf_dict = json.loads(conf_str)
         conf = munchify(conf_dict)
 
-    with open(conf.data.train_list, 'r') as train_pointer:
-        train_files = train_pointer.readlines()
-        train_seqs = []
-        for file in train_files:
-            with open(file, 'r') as file_pointer:
-                train_seqs.append(file_pointer.read())
+    model = MainNet(conf.model)
+    loss_func = getattr(nn, conf.loss_func.class)(**conf.loss_func.params)
+    optimizer = getattr(nn, conf.optim.class)(model.parameters(),
+                                          **conf.optim.params)
 
-    with open(conf.data.val_list, 'r') as val_pointer:
-        val_files = val_pointer.readlines()
-        val_seqs = []
-        for file in val_files:
-            with open(file, 'r') as val_pointer:
-                val_seqs.append(val_pointer.read())
+    train_set = BpseqDataset(conf.train_list)
+    val_set = BpseqDataset(conf.validation_list)
+    train_loader = DataLoader(train_set,
+                              batch_size=conf.training.batch_size,
+                              shuffle=conf.training.shuffle)
+    val_loader = DataLoader(val_set,
+                            batch_size=conf.training.batch_size,
+                            shuffle=conf.training.shuffle)
 
-
-    net = MainNet(conf.layers)
-    loss = Loss(conf.loss)
+    if conf.resume and os.path.exists(conf.training.checkpoint):
+        checkpoint = torch.load(conf.training.checkpoint)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        epoch = checkpoint['epoch']
+        loss = checkpoint['loss']
 
     for epoch in range(conf.train.epochs):
-      pass  
+        for seq, label in train_loader:
+            pred = model(seq)
+            loss = loss_func(pred, label)
+            loss.backward()
+            optimzer.step()
+            optimizer.zero_grad()
+        torch.save({'epoch': epoch,
+                    'model_state_dict': model.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                    'loss': loss},
+                   conf.checkpoint)
+        print(f'Loss for epoch {epoch}: {loss}\n')
 
-    
 
 if __name__ == '__main__':
     main()

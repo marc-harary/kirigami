@@ -1,0 +1,46 @@
+{
+    "data": {
+        "training_list": "training-list.lst",
+        "validation_list": "validation-list.lst",
+        "epochs": 10,
+        "batchsize": 1000,
+        "checkpoint": "checkpoint.pt"
+    },
+    
+    "post": {
+        "model": "Turner",
+        "max_helix_length": 30
+    },
+    
+    "optimizer": {
+        "optimizer": "Adam",
+        "params": {
+            "lr": 1e3,
+            "betas": [0.9, 0.999],
+            "eps": 1e-8,
+            "weight_decay": 0,
+            "amsgrad": false
+        }
+    },
+        
+    "layers": [
+        {
+            "layer": "Conv1d",
+            "params": {
+                "in_channels": 4,
+                "out_channels": 64,
+                "kernel_size": 6,
+                "padding": 3
+            }
+        },
+        {
+            "layer": "Conv1d",
+            "params": {
+                "in_channels": 64,
+                "out_channels": 1,
+                "kernel_size": 1,
+                "padding": 0
+            }
+        }
+    ]
+}

@@ -1,5 +1,5 @@
 # Kirigami
-Repository for PyTorch scripts.
+RNA secondary structure prediction via deep learning.
 ## Requirements
 * python (>=3.8)
 * pytorch (>=1.7)

@@ -20,7 +20,7 @@ def embed(in_path: str, out_path: str):
         out_names.append(out_name)
         torch.save(embed, out_name)
 
-    out_list = os.path.join(args.output, 'out.lst')
+    out_list = os.path.join(out_path, 'out.lst')
     with open(out_list, 'w') as f:
         for out_name in out_names:
             f.write(out_name + '\n')

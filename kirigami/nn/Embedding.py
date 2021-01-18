@@ -17,7 +17,6 @@ class SequenceEmbedding(AbstractEmbedding):
         for i in range(len(one_hot)):
             for j in range(len(one_hot)):
                 out[:,i,j] = torch.cat((one_hot[i], one_hot[j]))
-        out = out.unsqueeze(0)
         return out
 
 class LabelEmbedding(AbstractEmbedding):
@@ -56,5 +55,5 @@ class BpseqEmbedding(AbstractEmbedding):
             idx_out[int(i)-1, int(j)-1] = 1.
             seq += base
         seq_out = self.seq_embed(seq)
-        idx_out = idx_out.reshape(1, 1, L, L)
+        idx_out = idx_out.reshape(1, L, L)
         return seq_out, idx_out

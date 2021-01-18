@@ -13,11 +13,12 @@ class SequenceEmbedding(AbstractEmbedding):
 
     def forward(self, sequence):
         one_hot = torch.stack([BASE_DICT[char] for char in sequence.lower()])
-        ret = torch.empty(2*N_BASES, len(one_hot), len(one_hot))
+        out = torch.empty(2*N_BASES, len(one_hot), len(one_hot))
         for i in range(len(one_hot)):
             for j in range(len(one_hot)):
-                ret[:,i,j] = torch.cat((one_hot[i], one_hot[j]))
-        return ret
+                out[:,i,j] = torch.cat((one_hot[i], one_hot[j]))
+        out = out.unsqueeze(0)
+        return out
 
 class LabelEmbedding(AbstractEmbedding):
     def __init__(self):
@@ -27,15 +28,15 @@ class LabelEmbedding(AbstractEmbedding):
         lines = label.splitlines()
         matches = re.findall(r'[\d]+$', lines[0])
         L = int(matches[0])
-        ret = torch.zeros(L, L)
+        out = torch.zeros(L, L)
         for line in lines:
             if line.startswith('#') or line.startswith('i'):
                 continue
             line_split = line.split()
             idx1, idx2 = int(line_split[0]), int(line_split[-1])
-            ret[idx1-1, idx2-1] = 1.
-        ret = ret.unsqueeze(0)
-        return ret
+            out[idx1-1, idx2-1] = 1.
+        out = out.unsqueeze(0)
+        return out
 
 class BpseqEmbedding(AbstractEmbedding):
     def __init__(self):
@@ -46,14 +47,14 @@ class BpseqEmbedding(AbstractEmbedding):
         lines = bpseq.splitlines()
         lines = list(filter(lambda line: not line.startswith('#'), lines))
         L = len(lines)
-        idx_ret = torch.zeros(L, L)
+        idx_out = torch.zeros(L, L)
         seq = ''
         for line in lines:
             if line.startswith('#'):
                 continue
             i, base, j = line.split()
-            idx_ret[int(i)-1, int(j)-1] = 1.
+            idx_out[int(i)-1, int(j)-1] = 1.
             seq += base
-        seq_ret = self.seq_embed(seq)
-        idx_ret = idx_ret.unsqueeze(0)
-        return seq_ret, idx_ret
+        seq_out = self.seq_embed(seq)
+        idx_out = idx_out.reshape(1, 1, L, L)
+        return seq_out, idx_out

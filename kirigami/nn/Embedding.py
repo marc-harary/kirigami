@@ -1,10 +1,13 @@
 import re
 import torch
 from torch import nn
-from ..utils.constants import *
+from kirigami.utils.constants import *
 
+class AbstractEmbedding(nn.Module):
+    def __init__(self):
+        super(AbstractEmbedding, self).__init__()
 
-class SequenceEmbedding(nn.Module):
+class SequenceEmbedding(AbstractEmbedding):
     def __init__(self):
         super(SequenceEmbedding, self).__init__()
 
@@ -14,11 +17,9 @@ class SequenceEmbedding(nn.Module):
         for i in range(len(one_hot)):
             for j in range(len(one_hot)):
                 ret[:,i,j] = torch.cat((one_hot[i], one_hot[j]))
-        ret = ret.unsqueeze(0)
         return ret
 
-
-class LabelEmbedding(nn.Module):
+class LabelEmbedding(AbstractEmbedding):
     def __init__(self):
         super(LabelEmbedding, self).__init__()
 
@@ -36,14 +37,14 @@ class LabelEmbedding(nn.Module):
         ret = ret.unsqueeze(0)
         return ret
 
-
-class BpseqEmbedding(nn.Module):
+class BpseqEmbedding(AbstractEmbedding):
     def __init__(self):
         super(BpseqEmbedding, self).__init__()
         self.seq_embed = SequenceEmbedding()
 
     def forward(self, bpseq):
         lines = bpseq.splitlines()
+        lines = list(filter(lambda line: not line.startswith('#'), lines))
         L = len(lines)
         idx_ret = torch.zeros(L, L)
         seq = ''
@@ -54,5 +55,5 @@ class BpseqEmbedding(nn.Module):
             idx_ret[int(i)-1, int(j)-1] = 1.
             seq += base
         seq_ret = self.seq_embed(seq)
-        idx_ret = idx_ret.unsqueeze(0).unsqueeze(0)
+        idx_ret = idx_ret.unsqueeze(0)
         return seq_ret, idx_ret

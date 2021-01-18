@@ -1,4 +1,6 @@
-torch
+torch==1.7.1
+argparse
 json
 munch
 multipledispatch
+tqdm

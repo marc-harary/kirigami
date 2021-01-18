@@ -1,4 +1,3 @@
-import argparse
 import os
 import json
 from tqdm import tqdm
@@ -8,8 +7,8 @@ from torch import nn
 from torch.utils.data import DataLoader
 from kirigami.nn.MainNet import *
 from kirigami.nn.Embedding import *
-from kirigami.utils.data_utils import *
 from kirigami.nn.SPOT import *
+from kirigami.utils.data_utils import *
 
 
 def train(conf_path: str):
@@ -18,11 +17,11 @@ def train(conf_path: str):
         conf_dict = json.loads(conf_str)
         conf = munchify(conf_dict)
 
+    start_epoch = 0
     model = MainNet(conf.model)
     loss_func = getattr(nn, conf.loss_func.class_name)(**conf.loss_func.params)
     optimizer = getattr(torch.optim, conf.optim.class_name)(model.parameters(),
                                                             **conf.optim.params)
-    start_epoch = 0
 
     train_set = BpseqDataset(conf.data.training_list)
     train_loader = DataLoader(train_set,

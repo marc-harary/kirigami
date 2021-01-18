@@ -48,8 +48,6 @@ def train(conf_path: str):
             loss.backward()
             optimizer.step()
             optimizer.zero_grad()
-            # pbar.update(1)
-        # pbar.close()
         torch.save({'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),

@@ -7,7 +7,7 @@ class Maximizer(nn.Module):
         super(Maximizer, self).__init__()
         self.thres = thres
 
-    def forward(self, input):
+	def forward(self, input: torch.Tensor) -> torch.Tensor:
         L = input.shape[-1]
         input.diagonal(0, 2, 3)[:] = float('-inf')
         out = torch.eye(L).reshape_as(input)

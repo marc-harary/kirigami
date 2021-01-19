@@ -3,24 +3,24 @@ from torch import nn
 
 
 class ActDropNorm(nn.Module):
-    def __init__(self, p, activation='ReLU', num_channels=8):
+	def __init__(self, p: float, activation='ReLU', num_channels=8):
         super(ActDropNorm, self).__init__()
         activation_class = getattr(nn, activation)
         self.act = activation_class()
         self.drop = nn.Dropout(p=p)
         self.norm = nn.BatchNorm2d(num_channels)
 
-    def forward(self, input):
-        ret = input
-        ret = self.act(ret)
-        ret = self.drop(ret)
-        ret = self.norm(ret)
-        return ret
+	def forward(self, input: torch.Tensor) -> torch.Tensor:
+        out = input
+        out = self.act(out)
+        out = self.drop(out)
+        out = self.norm(out)
+        return out
 
 
 class BlockA(nn.Module):
     def __init__(self,
-                 p,
+				 p: float,
                  activation='ReLU',
                  n_channels=8,
                  kernel_size1=3,
@@ -40,20 +40,20 @@ class BlockA(nn.Module):
                                          p=p,
                                          activation=activation)
 
-    def forward(self, input):
-        ret = input
-        ret = self.act_drop_norm(ret)
-        ret = self.conv1(ret)
-        ret = self.act_drop_norm(ret)
-        ret = self.conv2(ret)
+	def forward(self, input: torch.Tensor) -> torch.Tensor:
+        out = input
+        out = self.act_drop_norm(out)
+        out = self.conv1(out)
+        out = self.act_drop_norm(out)
+        out = self.conv2(out)
         if self.resnet:
-            ret += input
-        return ret
+            out += input
+        return out
 
 
 class BlockB(nn.Module):
     def __init__(self,
-                 p,
+				 p: float,
                  activation='ReLU',
                  in_features=8,
                  out_features=8):
@@ -63,8 +63,8 @@ class BlockB(nn.Module):
                                          p=p,
                                          activation=activation)
 
-    def forward(self, input):
-        ret = input
-        ret = self.lin(ret)
-        ret = self.act_drop_norm(ret)
-        return ret
+	def forward(self, input: torch.Tensor) -> torch.Tensor:
+        out = input
+        out = self.lin(out)
+        out = self.act_drop_norm(out)
+        return out

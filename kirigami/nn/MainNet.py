@@ -15,13 +15,13 @@ class MainNet(nn.Module):
         self.n_layers = i
 
     def forward(self, input):
-        ret = input
+        out = input
         for i in range(self.n_layers + 1):
             layer = getattr(self, f'layer{i}')
             if isinstance(layer, nn.LSTM):
-                ret = torch.transpose(ret, 1, 2)
-                ret, _ = layer(ret)
-                ret = torch.transpose(ret, 1, 2)
+                out = torch.transpose(out, 1, 2)
+                out, _ = layer(out)
+                out = torch.transpose(out, 1, 2)
             else:
-                ret = layer(ret)
-        return ret
+                out = layer(out)
+        return out

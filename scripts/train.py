@@ -1,3 +1,4 @@
+import sys
 import os
 import json
 import argparse
@@ -6,23 +7,22 @@ from munch import munchify
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from kirigami.nn.MainNet import *
-from kirigami.nn.Embedding import *
-from kirigami.nn.SPOT import *
-from kirigami.utils.data_utils import *
 
+sys.path.append('..')
+from kirigami.utils.data_utils import *
+from kirigami.nn.SPOT import *
+from kirigami.nn.Embedding import *
+from kirigami.nn.MainNet import *
 
 def main():
-	parser = argparse.ArgumentParser('Train model via config file')
-	parser.add_argument('--config', '-c', type=str, help='Path to config file')
-	args = parse.parse_args()
-
+    parser = argparse.ArgumentParser('Train model via config file')
+    parser.add_argument('--config', '-c', type=str, help='Path to config file')
+    args = parser.parse_args()
 
     with open(args.config, 'r') as f:
         conf_str = f.read()
         conf_dict = json.loads(conf_str)
         conf = munchify(conf_dict)
-
 
     start_epoch = 0
     model = MainNet(conf.model)
@@ -30,20 +30,19 @@ def main():
     optimizer = getattr(torch.optim, conf.optim.class_name)(model.parameters(),
                                                             **conf.optim.params)
 
-
     dataset_class = TensorDataset if conf.data.pre_embed else BpseqDataset
     train_set = dataset_class(conf.data.training_list)
     train_loader = DataLoader(train_set,
-			                  batch_size=conf.data.batch_size,
-					          shuffle=conf.data.shuffle)
+                              batch_size=conf.data.batch_size,
+                              shuffle=conf.data.shuffle)
     train_loop = tqdm(train_loader) if conf.training.show_bar else train_loader
+
     if conf.data.validation_list:
         val_set = dataset_class(conf.data.validation_list)
         val_loader = DataLoader(val_set,
                                 batch_size=conf.data.batch_size,
                                 shuffle=conf.data.shuffle)
         val_loop = tqdm(val_loader) if conf.training.show_bar else val_loader
-
 
     if conf.resume:
         assert os.path.exists(conf.training.checkpoint), "Cannot find checkpoint file"
@@ -53,12 +52,9 @@ def main():
         start_epoch = checkpoint['epoch']
         loss = checkpoint['loss']
 
-
     best_val_loss = float('inf')
 
-
     for epoch in range(start_epoch, conf.training.epochs):
-        
         train_loss_tot = 0.
         for seq, lab in train_loop:
             pred = model(seq)
@@ -80,7 +76,7 @@ def main():
                 pred = model(seq)
                 loss = loss_func(pred, lab)
                 val_loss_tot += loss
-            val_loss_mean = val_loss_tot / len(val_loader)
+                val_loss_mean = val_loss_tot / len(val_loader)
             if val_loss_mean < best_val_loss:
                 best_val_loss = val_loss_mean
                 torch.save({'epoch': epoch,
@@ -97,4 +93,4 @@ def main():
 
 
 if __name__ == '__main__':
-	main()
+    main()

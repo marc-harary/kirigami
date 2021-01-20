@@ -3,14 +3,14 @@ from torch import nn
 
 
 class ActDropNorm(nn.Module):
-	def __init__(self, p: float, activation='ReLU', num_channels=8):
+    def __init__(self, p: float, activation='ReLU', num_channels=8):
         super(ActDropNorm, self).__init__()
         activation_class = getattr(nn, activation)
         self.act = activation_class()
         self.drop = nn.Dropout(p=p)
         self.norm = nn.BatchNorm2d(num_channels)
 
-	def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         out = input
         out = self.act(out)
         out = self.drop(out)
@@ -20,7 +20,7 @@ class ActDropNorm(nn.Module):
 
 class BlockA(nn.Module):
     def __init__(self,
-				 p: float,
+                 p: float,
                  activation='ReLU',
                  n_channels=8,
                  kernel_size1=3,
@@ -40,7 +40,7 @@ class BlockA(nn.Module):
                                          p=p,
                                          activation=activation)
 
-	def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         out = input
         out = self.act_drop_norm(out)
         out = self.conv1(out)
@@ -53,7 +53,7 @@ class BlockA(nn.Module):
 
 class BlockB(nn.Module):
     def __init__(self,
-				 p: float,
+                 p: float,
                  activation='ReLU',
                  in_features=8,
                  out_features=8):
@@ -63,7 +63,7 @@ class BlockB(nn.Module):
                                          p=p,
                                          activation=activation)
 
-	def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         out = input
         out = self.lin(out)
         out = self.act_drop_norm(out)

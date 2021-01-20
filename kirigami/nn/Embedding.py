@@ -3,27 +3,30 @@ import torch
 from torch import nn
 from kirigami.utils.constants import *
 
+
 class AbstractEmbedding(nn.Module):
     def __init__(self):
         super(AbstractEmbedding, self).__init__()
+
 
 class SequenceEmbedding(AbstractEmbedding):
     def __init__(self):
         super(SequenceEmbedding, self).__init__()
 
-	def forward(self, sequence: str) -> torch.Tensor:
+    def forward(self, sequence: str) -> torch.Tensor:
         one_hot = torch.stack([BASE_DICT[char] for char in sequence.lower()])
         out = torch.empty(2*N_BASES, len(one_hot), len(one_hot))
         for i in range(len(one_hot)):
             for j in range(len(one_hot)):
-                out[:,i,j] = torch.cat((one_hot[i], one_hot[j]))
+                out[:, i, j] = torch.cat((one_hot[i], one_hot[j]))
         return out
+
 
 class LabelEmbedding(AbstractEmbedding):
     def __init__(self):
         super(LabelEmbedding, self).__init__()
 
-	def forward(self, label: str) -> torch.Tensor:
+    def forward(self, label: str) -> torch.Tensor:
         lines = label.splitlines()
         matches = re.findall(r'[\d]+$', lines[0])
         L = int(matches[0])
@@ -37,12 +40,13 @@ class LabelEmbedding(AbstractEmbedding):
         out = out.unsqueeze(0)
         return out
 
+
 class BpseqEmbedding(AbstractEmbedding):
     def __init__(self):
         super(BpseqEmbedding, self).__init__()
         self.seq_embed = SequenceEmbedding()
 
-	def forward(self, bpseq: str) -> torch.Tensor:
+    def forward(self, bpseq: str) -> torch.Tensor:
         lines = bpseq.splitlines()
         lines = filter(lambda line: not line.startswith('#'), lines)
         L = len(lines)

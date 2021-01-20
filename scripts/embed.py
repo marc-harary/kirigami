@@ -1,9 +1,16 @@
 import os
+import argparse
 from tqdm import tqdm
 import torch
 from kirigami.nn.Embedding import *
 
-def embed(in_path: str, out_path: str):
+
+def main():
+	parser = argparse.ArgumentParser('Embed bpseq files as `torch.Tensor` objects')
+	parser.add_argument('--in-path', type=str, help='Path to input list file')
+	parser.add_argument('--out-path', type=str, help='Path to output directory')
+	args = parser.parse_args()
+
     os.path.exists(out_path) or os.mkdir(out_path)
     bp = BpseqEmbedding()
     with open(in_path, 'r') as f:
@@ -24,3 +31,7 @@ def embed(in_path: str, out_path: str):
     with open(out_list, 'w') as f:
         for out_name in out_names:
             f.write(out_name + '\n')
+
+
+if __name__ == '__main__':
+	main()

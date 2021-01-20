@@ -1,5 +1,6 @@
 import os
 import json
+import argparse
 from tqdm import tqdm
 from munch import munchify
 import torch
@@ -11,8 +12,12 @@ from kirigami.nn.SPOT import *
 from kirigami.utils.data_utils import *
 
 
-def evaluate(conf_path: str):
-	with open(conf_path, 'r') as f:
+def main():
+	parser = argparse.ArgumentParser('Test model via config file')
+	parser.add_argument('--config', '-c', type=str, help='Path to config file')
+	args = parser.parse_args()
+
+	with open(args.config, 'r') as f:
 		conf_str = f.read()
 		conf_dict = json.loads(conf_str)
 		conf = munchify(conf_dict)
@@ -38,3 +43,7 @@ def evaluate(conf_path: str):
 		test_loss += loss
 	test_loss_mean = test_loss / len(test_loop)
 	print(f'Mean test loss: {test_loss_mean}')
+
+
+if __name__ == '__main__':
+	main()

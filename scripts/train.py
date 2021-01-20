@@ -1,5 +1,6 @@
 import os
 import json
+import argparse
 from tqdm import tqdm
 from munch import munchify
 import torch
@@ -11,8 +12,13 @@ from kirigami.nn.SPOT import *
 from kirigami.utils.data_utils import *
 
 
-def train(conf_path: str):
-    with open(conf_path, 'r') as f:
+def main():
+	parser = argparse.ArgumentParser('Train model via config file')
+	parser.add_argument('--config', '-c', type=str, help='Path to config file')
+	args = parse.parse_args()
+
+
+    with open(args.config, 'r') as f:
         conf_str = f.read()
         conf_dict = json.loads(conf_str)
         conf = munchify(conf_dict)
@@ -88,3 +94,7 @@ def train(conf_path: str):
             if conf.data.validation_list:
                 print(f'Mean validation loss for epoch {epoch}: {val_loss_mean}')
             print()
+
+
+if __name__ == '__main__':
+	main()

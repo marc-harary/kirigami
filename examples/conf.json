@@ -1,0 +1,104 @@
+{
+    "resume": false,
+
+    "data": {
+        "pre_embed": true,
+        "training_list": "/home/mah258/Pyle/kirigami/experiments/exp1/train_tensor.lst",
+        "validation_list": "/home/mah258/Pyle/kirigami/experiments/exp1/val_tensor.lst",
+        "test_list": "/home/mah258/Pyle/kirigami/experiments/exp1/test_tensor.lst",
+        "batch_size": 1,
+        "shuffle": true
+    },
+
+    "training": {
+        "epochs": 1000,
+        "checkpoint": "/home/mah258/Pyle/kirigami/experiments/exp1/checkpoint.pt",
+        "best": "/home/mah258/Pyle/kirigami/experiments/exp1/best.pt",
+        "print_frequency": 10,
+        "show_bar": true
+    },
+
+    "loss_func": {
+        "class_name": "MSELoss",
+        "params": {}
+    },
+
+    "post": {
+        "model": "Turner",
+        "max_helix_length": 30
+    },
+
+    "optim": {
+        "class_name": "Adam",
+        "params": {
+            "lr": 1e-3,
+            "betas": [0.9, 0.999],
+            "eps": 1e-8,
+            "weight_decay": 0,
+            "amsgrad": false
+        }
+    },
+
+    "model": [
+        {
+            "class_name": "kirigami.nn.SPOT.BlockA",
+            "kwargs": {
+                "p": 0.1
+            }
+        },
+        {
+            "class_name": "kirigami.nn.SPOT.BlockA",
+            "kwargs": {
+                "p": 0.1
+            }
+        },
+        {
+            "class_name": "kirigami.nn.SPOT.BlockA",
+            "kwargs": {
+                "p": 0.1
+            }
+        },
+        {
+            "class_name": "kirigami.nn.SPOT.BlockA",
+            "kwargs": {
+                "p": 0.1
+            }
+        },
+        {
+            "class_name": "kirigami.nn.SPOT.BlockA",
+            "kwargs": {
+                "p": 0.1
+            }
+        },
+        {
+            "class_name": "kirigami.nn.SPOT.BlockA",
+            "kwargs": {
+                "p": 0.1
+            }
+        },
+        {
+            "class_name": "kirigami.nn.SPOT.BlockA",
+            "kwargs": {
+                "p": 0.1
+            }
+        },
+        {
+            "class_name": "kirigami.nn.SPOT.BlockA",
+            "kwargs": {
+                "p": 0.1
+            }
+        },
+        {
+            "class_name": "torch.nn.Conv2d",
+            "kwargs": {
+                "in_channels": 8,
+                "out_channels": 1,
+                "kernel_size": 1
+            }
+        },
+        {
+            "class_name": "torch.nn.Sigmoid",
+            "kwargs": {}        
+        }
+    ]
+}

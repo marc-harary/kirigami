@@ -48,7 +48,7 @@ class BpseqEmbedding(AbstractEmbedding):
 
     def forward(self, bpseq: str) -> torch.Tensor:
         lines = bpseq.splitlines()
-        lines = filter(lambda line: not line.startswith('#'), lines)
+        lines = list(filter(lambda line: not line.startswith('#'), lines))
         L = len(lines)
         idx_out = torch.zeros(L, L)
         seq = ''

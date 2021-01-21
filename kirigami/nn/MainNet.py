@@ -2,7 +2,7 @@ from sys import modules
 from typing import List
 import torch
 from torch import nn
-from . import *
+
 
 class MainNet(nn.Module):
    '''Constructs deep net from list of dictionaries''' 

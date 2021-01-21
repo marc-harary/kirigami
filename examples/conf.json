@@ -3,9 +3,9 @@
 
     "data": {
         "pre_embed": true,
-        "training_list": "/home/mah258/Pyle/kirigami/experiments/exp1/train_tensor.lst",
-        "validation_list": "/home/mah258/Pyle/kirigami/experiments/exp1/val_tensor.lst",
-        "test_list": "/home/mah258/Pyle/kirigami/experiments/exp1/test_tensor.lst",
+        "training_list": "/home/mah258/Pyle/data/pdb-cleaned/lists/training_embed.lst",
+        "validation_list": "/home/mah258/Pyle/data/pdb-cleaned/lists/validation_embed.lst",
+        "test_list": "/home/mah258/Pyle/data/pdb-cleaned/lists/test_embed.lst",
         "batch_size": 1,
         "shuffle": true
     },
@@ -43,49 +43,49 @@
         {
             "class_name": "kirigami.nn.SPOT.BlockA",
             "kwargs": {
-                "p": 0.1
+                "p": 0.4
             }
         },
         {
             "class_name": "kirigami.nn.SPOT.BlockA",
             "kwargs": {
-                "p": 0.1
+                "p": 0.4
             }
         },
         {
             "class_name": "kirigami.nn.SPOT.BlockA",
             "kwargs": {
-                "p": 0.1
+                "p": 0.4
             }
         },
         {
             "class_name": "kirigami.nn.SPOT.BlockA",
             "kwargs": {
-                "p": 0.1
+                "p": 0.4
             }
         },
         {
             "class_name": "kirigami.nn.SPOT.BlockA",
             "kwargs": {
-                "p": 0.1
+                "p": 0.4
             }
         },
         {
             "class_name": "kirigami.nn.SPOT.BlockA",
             "kwargs": {
-                "p": 0.1
+                "p": 0.4
             }
         },
         {
             "class_name": "kirigami.nn.SPOT.BlockA",
             "kwargs": {
-                "p": 0.1
+                "p": 0.4
             }
         },
         {
             "class_name": "kirigami.nn.SPOT.BlockA",
             "kwargs": {
-                "p": 0.1
+                "p": 0.4
             }
         },
         {

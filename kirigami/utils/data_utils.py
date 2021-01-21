@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from nn.Embedding import *
 
+
 class TensorDataset(Dataset):
     def __init__(self, list_file: str):
         super(TensorDataset, self).__init__()
@@ -13,6 +14,7 @@ class TensorDataset(Dataset):
 
     def __getitem__(self, idx: int):
         return torch.load(self.files[idx])
+
 
 class AbstractASCIIDataset(Dataset):
     def __init__(self, list_file: str, embed: AbstractEmbedding):
@@ -30,13 +32,16 @@ class AbstractASCIIDataset(Dataset):
             file_str = f.read()
         return self.embed(file_str)
 
+
 class FastaDataset(AbstractASCIIDataset):
     def __init__(self, list_file: str):
         super(FastaDataset, self).__init__(list_file, SequenceEmbedding())
 
+
 class LabelDataset(AbstractASCIIDataset):
     def __init__(self, list_file: str):
         super(FastaDataset, self).__init__(list_file, LabelEmbedding())
+
 
 class BpseqDataset(AbstractASCIIDataset):
     def __init__(self, list_file: str):

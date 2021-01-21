@@ -10,6 +10,7 @@ class AbstractEmbedding(nn.Module):
 
 
 class SequenceEmbedding(AbstractEmbedding):
+    '''Embeds FASTA file'''
     def __init__(self):
         super(SequenceEmbedding, self).__init__()
 
@@ -23,6 +24,7 @@ class SequenceEmbedding(AbstractEmbedding):
 
 
 class LabelEmbedding(AbstractEmbedding):
+    '''Embeds label files'''
     def __init__(self):
         super(LabelEmbedding, self).__init__()
 
@@ -42,6 +44,7 @@ class LabelEmbedding(AbstractEmbedding):
 
 
 class BpseqEmbedding(AbstractEmbedding):
+    '''Embeds .bpseq file'''
     def __init__(self):
         super(BpseqEmbedding, self).__init__()
         self.seq_embed = SequenceEmbedding()

@@ -22,6 +22,7 @@ def train(args) -> None:
 
 @dispatch(munch.Munch)
 def train(config) -> None:
+    '''Train deep network based on config files'''
     start_epoch = 0
     model = MainNet(config.model)
     loss_func = getattr(nn, config.loss_func.class_name)(**config.loss_func.params)

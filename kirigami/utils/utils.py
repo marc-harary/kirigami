@@ -5,6 +5,7 @@ import munch
 
 
 def path2munch(path: pathlib.Path) -> munch.Munch:
+    '''Reads path file and converts it to `munch.Munch`'''
     with open(path, 'r') as f:
         txt = f.read()
     conf_dict = json.loads(txt)

@@ -1,10 +1,12 @@
 from sys import modules
+from typing import List
 import torch
 from torch import nn
 from . import *
 
 class MainNet(nn.Module):
-    def __init__(self, dict_list):
+   '''Constructs deep net from list of dictionaries''' 
+    def __init__(self, dict_list: List[dict]):
         super(MainNet, self).__init__()
         for i, layer_dict in enumerate(dict_list):
             module_name, class_name = layer_dict['class_name'].rsplit('.', 1)
@@ -14,7 +16,7 @@ class MainNet(nn.Module):
             setattr(self, f'layer{i}', obj_ptr)
         self.n_layers = i
 
-    def forward(self, input):
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         out = input
         for i in range(self.n_layers + 1):
             layer = getattr(self, f'layer{i}')

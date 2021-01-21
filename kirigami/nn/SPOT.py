@@ -3,6 +3,7 @@ from torch import nn
 
 
 class ActDropNorm(nn.Module):
+    '''Performs activation, dropout, and batch normalization for resnet blocks'''
     def __init__(self, p: float, activation='ReLU', num_channels=8):
         super(ActDropNorm, self).__init__()
         activation_class = getattr(nn, activation)
@@ -19,6 +20,7 @@ class ActDropNorm(nn.Module):
 
 
 class BlockA(nn.Module):
+    '''Implements BlockA resnet from SPOT-RNA network'''
     def __init__(self,
                  p: float,
                  activation='ReLU',
@@ -52,6 +54,7 @@ class BlockA(nn.Module):
 
 
 class BlockB(nn.Module):
+    '''Implements BlockB FC layers from SPOT-RNA network'''
     def __init__(self,
                  p: float,
                  activation='ReLU',

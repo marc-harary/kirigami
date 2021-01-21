@@ -21,6 +21,7 @@ def evaluate(args) -> None:
 
 @dispatch(munch.Munch)
 def evaluate(config) -> None:
+    '''Evaluates model from config file'''
     if os.path.exists(config.training.best):
         saved = torch.load(config.training.best)  
     else:

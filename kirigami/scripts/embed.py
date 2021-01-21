@@ -11,6 +11,7 @@ def embed(conf) -> None:
 
 @dispatch(pathlib.Path, pathlib.Path)
 def embed(in_list, out_directory) -> None:
+    '''Embeds .bpseq files as `torch.Tensors`'''
     os.path.exists(out_directory) or os.mkdir(out_directory)
     bp = BpseqEmbedding()
     with open(in_list, 'r') as f:

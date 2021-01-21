@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from ..nn.Embedding import *
+from nn.Embedding import *
 
 class TensorDataset(Dataset):
 	def __init__(self, list_file: str):

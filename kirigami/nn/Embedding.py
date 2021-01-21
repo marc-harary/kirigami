@@ -1,7 +1,7 @@
 import re
 import torch
 from torch import nn
-from kirigami.utils.constants import *
+from utils.constants import *
 
 
 class AbstractEmbedding(nn.Module):

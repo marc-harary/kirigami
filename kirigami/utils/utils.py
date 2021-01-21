@@ -1,3 +1,15 @@
+import json
+import os
+import pathlib
+import munch
+
+
+def path2munch(path: pathlib.Path) -> munch.Munch:
+    with open(path, 'r') as f:
+        txt = f.read()
+    conf_dict = json.loads(txt)
+    return munch.munchify(conf_dict)
+
 def read_label(infile):
     label_list=[]
     fp=open(infile,'r')

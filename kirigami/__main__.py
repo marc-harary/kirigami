@@ -18,10 +18,10 @@ def main():
     parser_train.add_argument('--config', type=pathlib.Path, help='path to config file') 
     parser_train.set_defaults(func=train)
 
-    parser_test = subparsers.add_parser('test', help='train network files')
+    parser_test = subparsers.add_parser('evaluate', help='train network files')
     parser_test.add_argument('--config', type=pathlib.Path, help='path to config file') 
     parser_test.add_argument('--in-list', type=pathlib.Path, help='path to list file')
-    parser_train.set_defaults(func=test)
+    parser_train.set_defaults(func=evaluate)
 
     args = parser.parse_args()
     args.func(args)

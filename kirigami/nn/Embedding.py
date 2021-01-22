@@ -1,8 +1,10 @@
 import re
 import torch
-from .. import nn
+from kirigami._globals import *
+
 
 __all__ = ['AbstractEmbedding', 'LabelEmbedding', 'BpseqEmbedding', 'SequenceEmbedding']
+
 
 class AbstractEmbedding(torch.nn.Module):
     def __init__(self):
@@ -15,7 +17,7 @@ class SequenceEmbedding(AbstractEmbedding):
         super(SequenceEmbedding, self).__init__()
 
     def forward(self, sequence: str) -> torch.Tensor:
-        one_hot = torch.stack([nn._globals.BASE_DICT[char] for char in sequence.lower()])
+        one_hot = torch.stack([BASE_DICT[char] for char in sequence.lower()])
         out = torch.empty(2*N_BASES, len(one_hot), len(one_hot))
         for i in range(len(one_hot)):
             for j in range(len(one_hot)):

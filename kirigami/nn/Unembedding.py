@@ -2,7 +2,9 @@ import re
 import torch
 from torch import nn
 
+
 __all__ =['AbstractUnembedding', 'BpseqUnembedding']
+
 
 class AbstractUnembedding(nn.Module):
     def __init__(self):

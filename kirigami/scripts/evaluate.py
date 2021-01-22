@@ -13,6 +13,7 @@ from nn.SPOT import *
 from nn.Embedding import *
 from utils.data_utils import *
 
+__all__ = ['evaluate']
 
 @dispatch(argparse.Namespace)
 def evaluate(args) -> None:
@@ -23,7 +24,7 @@ def evaluate(args) -> None:
 def evaluate(config) -> None:
     '''Evaluates model from config file'''
     if os.path.exists(config.training.best):
-        saved = torch.load(config.training.best)  
+        saved = torch.load(config.training.best)
     else:
         saved = torch.load(config.training.checkpoint)
 

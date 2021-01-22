@@ -6,6 +6,8 @@ import torch
 from tqdm import tqdm
 from nn.Embedding import BpseqEmbedding
 
+__all__ = ['embed']
+
 @dispatch(argparse.Namespace)
 def embed(conf) -> None:
     return embed(conf.in_list, conf.out_directory)

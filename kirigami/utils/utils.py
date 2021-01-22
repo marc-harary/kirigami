@@ -3,6 +3,7 @@ import os
 import pathlib
 import munch
 
+__all__ = ['path2munch', 'read_label', 'calcF1MCC']
 
 def path2munch(path: pathlib.Path) -> munch.Munch:
     '''Reads path file and converts it to `munch.Munch`'''
@@ -10,6 +11,7 @@ def path2munch(path: pathlib.Path) -> munch.Munch:
         txt = f.read()
     conf_dict = json.loads(txt)
     return munch.munchify(conf_dict)
+
 
 def read_label(infile):
     label_list=[]
@@ -28,6 +30,7 @@ def read_label(infile):
             label_list.append((nt2,nt1))
     BPnat=len(label_list)
     return label_list, BPnat
+
 
 def calcF1MCC(sequence,positive_list,predict_list):
     L=len(sequence)

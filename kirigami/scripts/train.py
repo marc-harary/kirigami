@@ -13,6 +13,7 @@ from nn.SPOT import *
 from nn.Embedding import *
 from nn.MainNet import *
 
+__all__ = ['train']
 
 @dispatch(argparse.Namespace)
 def train(args) -> None:

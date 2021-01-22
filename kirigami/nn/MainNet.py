@@ -5,7 +5,6 @@ from torch import nn
 
 __all__ = ['MainNet']
 
-
 class MainNet(nn.Module):
    # '''Constructs deep net from list of dictionaries''' 
     def __init__(self, dict_list: List[dict]):

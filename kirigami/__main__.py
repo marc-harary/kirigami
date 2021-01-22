@@ -5,7 +5,7 @@ from scripts.train import train
 from scripts.evaluate import evaluate
 
 def main():
-    parser = argparse.ArgumentParser(prog='KIRIGAMI')
+    parser = argparse.ArgumentParser(prog='kirigami')
     parser.add_argument('--quiet', '-q', type=bool, help='quiet', default=False)
     subparsers = parser.add_subparsers()
 

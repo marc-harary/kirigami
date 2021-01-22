@@ -4,7 +4,7 @@ import argparse
 from multipledispatch import dispatch
 import torch
 from tqdm import tqdm
-from nn.Embedding import BpseqEmbedding
+from kirigami.nn.Embedding import BpseqEmbedding
 
 __all__ = ['embed']
 

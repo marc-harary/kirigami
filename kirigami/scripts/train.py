@@ -7,13 +7,15 @@ import munch
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from utils.utils import path2munch
-from utils.data_utils import *
-from nn.SPOT import *
-from nn.Embedding import *
-from nn.MainNet import *
+from kirigami.utils.utils import path2munch
+from kirigami.utils.data_utils import *
+from kirigami.nn.SPOT import *
+from kirigami.nn.Embedding import *
+from kirigami.nn.MainNet import *
+
 
 __all__ = ['train']
+
 
 @dispatch(argparse.Namespace)
 def train(args) -> None:
@@ -30,12 +32,15 @@ def train(config) -> None:
     optimizer = getattr(torch.optim, config.optim.class_name)(model.parameters(),
                                                             **config.optim.params)
 
+
+    best_val_loss = float('inf')
     dataset_class = TensorDataset if config.data.pre_embed else BpseqDataset
     train_set = dataset_class(config.data.training_list)
     train_loader = DataLoader(train_set,
                               batch_size=config.data.batch_size,
                               shuffle=config.data.shuffle)
     train_loop = tqdm(train_loader) if config.training.show_bar else train_loader
+
 
     if config.data.validation_list:
         val_set = dataset_class(config.data.validation_list)
@@ -44,15 +49,16 @@ def train(config) -> None:
                                 shuffle=config.data.shuffle)
         val_loop = tqdm(val_loader) if config.training.show_bar else val_loader
 
-    if conf.resume:
-        assert os.path.exists(config.training.checkpoint), "Cannot find checkpoint file"
-        checkpoint = torch.load(config.training.checkpoint)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        start_epoch = checkpoint['epoch']
-        loss = checkpoint['loss']
 
-    best_val_loss = float('inf')
+    if config.resume:
+        assert os.path.exists(config.training.best), "Cannot find checkpoint file"
+        best = torch.load(config.training.best)
+        model.load_state_dict(best['model_state_dict'])
+        optimizer.load_state_dict(best['optimizer_state_dict'])
+        start_epoch = best['epoch']
+        loss = best['loss']
+        best_val_loss = best['best_val_loss']
+
 
     for epoch in range(start_epoch, config.training.epochs):
         train_loss_tot = 0.

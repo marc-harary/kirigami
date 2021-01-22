@@ -1,9 +1,9 @@
 import torch
 from torch.utils.data import Dataset, DataLoader
-from nn.Embedding import *
+from kirigami.nn.Embedding import *
 
 
-__all__ = ['TensorDataset', 'AbstractACSIIDataset']
+__all__ = ['TensorDataset', 'AbstractASCIIDataset']
 
 
 class TensorDataset(Dataset):

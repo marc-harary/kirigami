@@ -8,10 +8,10 @@ from torch import nn
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 import munch
-from utils.data_utils import *
-from nn.SPOT import *
-from nn.Embedding import *
-from utils.data_utils import *
+from kirigami.utils.data_utils import *
+from kirigami.nn.SPOT import *
+from kirigami.nn.Embedding import *
+from kirigami.utils.utils import *
 
 __all__ = ['evaluate']
 

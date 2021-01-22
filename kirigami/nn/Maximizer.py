@@ -1,13 +1,15 @@
 import torch
 from torch import nn
 
+__all__ = ['Maximizer']
+
 class Maximizer(nn.Module):
     '''Sets max value in row to 1 and all others to 0'''
     def __init__(self, thres=.5):
         super(Maximizer, self).__init__()
         self.thres = thres
 
-	def forward(self, input: torch.Tensor) -> torch.Tensor:
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         L = input.shape[-1]
         input.diagonal(0, 2, 3)[:] = float('-inf')
         out = torch.eye(L).reshape_as(input)

@@ -1,6 +1,8 @@
 import torch
 from torch import nn
 
+__all__ = ['ActDropNorm', 'BlockA', 'BlockB']
+
 
 class ActDropNorm(nn.Module):
     '''Performs activation, dropout, and batch normalization for resnet blocks'''

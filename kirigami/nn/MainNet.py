@@ -3,6 +3,8 @@ from typing import List
 import torch
 from torch import nn
 
+__all__ = ['MainNet']
+
 
 class MainNet(nn.Module):
    # '''Constructs deep net from list of dictionaries''' 

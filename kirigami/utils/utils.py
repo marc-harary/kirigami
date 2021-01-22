@@ -3,7 +3,9 @@ import os
 import pathlib
 import munch
 
+
 __all__ = ['path2munch', 'read_label', 'calcF1MCC']
+
 
 def path2munch(path: pathlib.Path) -> munch.Munch:
     '''Reads path file and converts it to `munch.Munch`'''

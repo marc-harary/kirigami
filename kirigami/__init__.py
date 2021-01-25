@@ -1,3 +1,3 @@
-from . import _globals
-from . import nn
-from . import utils
+from kirigami import _globals
+from kirigami import nn
+from kirigami import utils

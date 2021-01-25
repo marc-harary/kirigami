@@ -1,19 +1,28 @@
 # Kirigami
 RNA secondary structure prediction via deep learning.
+
 ## Requirements
 * python (>=3.9)
 * C++17 compatible compiler
 * Docker
 * Singularity
+
 ## Install
 ```
 chmod +x run.sh
 docker pull python
 ./run.sh python install -r requirements.txt
 ```
+
 ## Credits
 Thermodynamic subroutines sourced from https://github.com/keio-bioinformatics/mxfold2.
+
 ## Usage
+Commands are run within the `python3.9` Singularity container as follows:
+```
+./run.sh python $COMMAND+ $OPTION+
+```
+The arguments to the `kirigami` module itself are as follows:
 ```
 usage: kirigami [-h] [--quiet QUIET] {embed,train,evaluate} ...
 

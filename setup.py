@@ -5,5 +5,10 @@ setup(name='kirigami',
       description='RNA secondary structure prediction via deep learning',
       author='Marc Harary',
       author_email='marc.harary@yale.edu',
-      packages=find_packages()
+      packages=find_packages(),
+      entry_points = {
+              'console_scripts': [
+                'kirigami = kirigami.__main__:main'
+              ],
+          },
      )

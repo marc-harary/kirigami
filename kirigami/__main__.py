@@ -17,13 +17,12 @@ def main():
     parser_train.add_argument('--config', required=True, type=pathlib.Path, help='path to config file')
     parser_train.set_defaults(func=train)
 
-    parser_evaluate = subparsers.add_parser('evaluate', help='train network files')
+    parser_evaluate = subparsers.add_parser('evaluate', help='evaluate network on test files')
     parser_evaluate.add_argument('--config', required=True, type=pathlib.Path, help='path to config file')
     parser_evaluate.add_argument('--in-list', required=True, type=pathlib.Path, help='path to list file')
     parser_evaluate.set_defaults(func=evaluate)
 
     args = parser.parse_args()
-    print(args)
     args.func(args)
 
 if __name__ == '__main__':

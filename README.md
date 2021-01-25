@@ -1,9 +1,16 @@
 # Kirigami
 RNA secondary structure prediction via deep learning.
 ## Requirements
-* python (>=3.8)
-* pytorch (>=1.7)
+* python (>=3.9)
 * C++17 compatible compiler
+* Docker
+* Singularity
+## Install
+```
+chmod +x run.sh
+docker pull python
+./run.sh python install -r requirements.txt
+```
 ## Credits
 Thermodynamic subroutines sourced from https://github.com/keio-bioinformatics/mxfold2.
 ## Usage

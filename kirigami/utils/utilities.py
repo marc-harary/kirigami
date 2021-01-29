@@ -1,64 +1,54 @@
 import json
 import os
-import pathlib
+from pathlib import Path
 from typing import List, Tuple, Dict, DefaultDict
 from collections import defaultdict
 from operator import itemgetter
 from copy import deepcopy
-from multipledispatch import dispatch
-import munch
+from itertools import permutations
 import torch
+import munch
 
 
-__all__ = ['path2munch', 'read_label', 'calcF1MCC', 'get_contacts']
+__all__ = ['path2munch', 'read_label', 'calcF1MCC', 'get_contacts', 'pairs2bpseq']
 
 
 PairMap = DefaultDict[int,int]
 
 
-def get_idxs(input: torch.Tensor, skip_diagonal: bool = False) -> PairMap:
-    '''Returns all permutations of indices in a matrix'''
-    L = input.shape[0]
-    idxs = []
-    for i in range(L):
-        for j in range(L):
-            if skip_diagonal and i == j:
-                continue
-            idxs.append((i,j))
-    return idxs
+def path2munch(path: Path) -> munch.Munch:
+    '''Reads .json file saved at PATH and returns `Munch` object'''
+    with open(path, 'r') as f:
+        txt = f.read()
+    conf_json = json.loads(txt)
+    conf =  munch.munchify(conf_json)
+    return conf
 
 
-def get_contacts(input: torch.Tensor, thres: float = .5) -> Tuple[torch.Tensor, PairMap]
-    '''Predicts contact matrix based on output of network'''
+def get_contacts(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> Tuple[torch.Tensor, PairMap]:
+    '''Predicts contact matrix and index map based on output of network'''
     mat = input.squeeze()
     assert mat.dim() == 2 and mat.shape[0] == mat.shape[1], "Input tensor must be square"
-    idxs = get_idxs(mat, skip_diagonal=True)
+    idxs = list(permutations(range(mat.shape[0]), 2))
     vals = list(zip(idxs, [input[idx] for idx in idxs]))
     vals = list(filter(lambda val: val[1] >= thres, vals))
-    vals = sorted(vals, key=itemgetter(1), reverse=True)
-    pairs = set()
+    vals = sorted(vals, key=itemgetter(1))
     out = torch.zeros_like(mat)
-    pair_dict = defaultdict(lambda: 0)
-    for pair in vals:
-        idxs = pair[0]
-        idxs_sort = tuple(sorted(idxs))
-        idxs_rev = tuple(reversed(idxs))
-        if idxs_sort not in pairs:
-            pairs.add(idxs_sort)
-            out[idxs] = 1.
-            out[idxs_rev] = 1.
-            pair_dict[idxs[0]] = idxs[1]
-            pair_dict[idxs[1]] = idxs[0]
-    out.diagonal()[:] = 1.
-    return out, pair_list
+    pair_dict = defaultdict(lambda: -1)
+    while vals:
+        val = vals.pop()
+        i, j = val[0]
+        out[i,j], out[j,i] = 1., 1.
+        pair_dict[i], pair_dict[j] = j, i
+        vals = list(filter(lambda val: not set((i,j)).intersection(set(val[0])), vals))
+    out.diagonal()[:] = diagonal
+    return out, pair_dict
 
 
 def pairs2bpseq(sequence: str, pairs: PairMap) -> str:
     '''Turn contact matrix and sequence into bpseq file-style string'''
-    out_str = ''
-    for i, char in enumerate(sequence):
-        out_str += f'f{i+1} {char} {pairs[i]+1}\n'
-    return out_str
+    out_list = [f'{i+1} {char.upper()} {pairs[i]+1}\n' for i, char in enumerate(sequence)]
+    return ''.join(out_list)
 
 
 def read_label(in_file: str) -> PairMap:

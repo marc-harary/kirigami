@@ -6,7 +6,7 @@ from torch import nn
 __all__ = ['MainNet']
 
 class MainNet(nn.Module):
-   # '''Constructs deep net from list of dictionaries''' 
+   '''Constructs deep net from list of dictionaries'''
     def __init__(self, dict_list: List[dict]):
         super(MainNet, self).__init__()
         for i, layer_dict in enumerate(dict_list):

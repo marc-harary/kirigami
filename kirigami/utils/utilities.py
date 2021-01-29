@@ -11,7 +11,16 @@ import munch
 from kirigami._globals import *
 
 
-__all__ = ['path2munch', 'read_label', 'calcF1MCC', 'get_contacts', 'pairs2bpseq']
+__all__ = ['path2munch',
+           'pairmap2tensor',
+           'sequence2tensor',
+           'label2tensor',
+           'bpseq2tensor',
+           'tensor2pairmap',
+           'bpseq2pairmap',
+           'pairmap2bpseq',
+           'binarize',
+           'calcF1MCC']
 
 
 def path2munch(path: Path) -> munch.Munch:
@@ -23,25 +32,30 @@ def path2munch(path: Path) -> munch.Munch:
     return conf
 
 
-def pairs2tensor(pairs: PairMap, L: int, dim: int = 4) -> torch.Tensor:
+def pairmap2tensor(pairs: PairMap, out_dim: int = 4) -> torch.Tensor:
+    '''Converts `PairMap` to contact matrix (`torch.Tensor`)'''
+    L = len(pairs)
     out = torch.zeros(L, L)
     for pair in pairs:
         out[pair] = 1.
-    for i in range(dim - 2):
+    while out_dim > out.dim():
        out.unsqueeze_(0)
     return out
 
 
-def seq2tensor(sequence: str) -> torch.Tensor:
-    one_hot = torch.stack([BASE_DICT[char] for char in sequence.lower()])
-    out = torch.empty(2 * N_BASES, len(one_hot), len(one_hot))
-    for i in range(len(one_hot)):
-        for j in range(len(one_hot)):
+def sequence2tensor(sequence: str) -> torch.Tensor:
+    '''Converts `FASTA` sequence to `torch.Tensor`'''
+    L = len(sequence)
+    one_hot = torch.stack([BASE_DICT[char] for char in sequence.upper()])
+    out = torch.empty(2 * N_BASES, L, L)
+    for i in range(L):
+        for j in range(L):
             out[:, i, j] = torch.cat((one_hot[i], one_hot[j]))
     return out
 
 
-def lab2tensor(label: str) -> torch.Tensor:
+def label2tensor(label: str, out_dim: int = 4) -> torch.Tensor:
+    '''Converts label file to contact matrix (`torch.Tensor`)'''
     lines = label.splitlines()
     matches = re.findall(r'[\d]+$', lines[0])
     L = int(matches[0])
@@ -52,39 +66,42 @@ def lab2tensor(label: str) -> torch.Tensor:
         line_split = line.split()
         idx1, idx2 = int(line_split[0]), int(line_split[-1])
         out[idx1-1, idx2-1] = 1.
-    out = out.unsqueeze(0)
+    while out_dim > out.dim():
+        out.unsqueeze_(0)
     return out
 
 
-def bpseq2pairs(bpseq: str) -> Tuple[str, PairMap]:
+def bpseq2pairmap(bpseq: str) -> Tuple[str, PairMap]:
+    '''Converts `.bpseq` file to string and `PairMap`'''
     lines = bpseq.splitlines()
     lines = list(filter(lambda line: not line.startswith('#'), lines))
     L = len(lines)
-    pair_default = defaultdict(lambda: -1)
+    pair_default = defaultdict(lambda: NO_CONTACT)
     sequence = ''
     for line in lines:
         i, base, j = line.split()
         i, j = int(i) - 1, int(j) - 1
         pair_default[i], pair_default[j] = j, i
-        sequence += base.lower()
+        sequence += base.upper()
     pair_map = {i: pair_default[i] for i in range(L)}
     return sequence, pair_map
 
 
-def bpseq2tensors(bpseq: str) -> Tuple[torch.Tensor, torch.Tensor]:
+def bpseq2tensor(bpseq: str) -> Tuple[torch.Tensor, torch.Tensor]:
+    '''Converts `.bpseq` file to `torch.Tensor`'s'''
     sequence, pair_map = bpseq2pairs(bpseq)
-    return seq2tensor(sequence), pairs2tensor(pair_map)
+    return sequence2tensor(sequence), pairmap2tensor(pair_map)
 
 
-def pairs2bpseq(sequence: str, pairs: PairMap) -> str:
-    '''Turn contact matrix and sequence into bpseq file-style string'''
+def pairmap2bpseq(sequence: str, pair_map: PairMap) -> str:
+    '''Converts `FASTA`-style sequence and `PairMap` to `.bpseq`-style string'''
     assert len(sequence) == len(pairs)
-    out_list = [f'{i+1} {char.upper()} {pairs[i]+1}\n' for i, char in enumerate(sequence)]
+    out_list = [f'{i+1} {char.upper()} {pair_map[i]+1}\n' for i, char in enumerate(sequence)]
     return ''.join(out_list)
 
 
-def get_contacts(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> Tuple[torch.Tensor, PairMap]:
-    '''Predicts contact matrix and index map based on output of network'''
+def binarize(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> torch.Tensor
+    '''Binarizes contact matrix from deep network'''
     mat = input.squeeze()
     L = mat.shape[0]
     assert mat.dim() == 2 and L == mat.shape[1], "Input tensor must be square"
@@ -93,16 +110,22 @@ def get_contacts(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -
     vals = list(filter(lambda val: val[1] >= thres, vals))
     vals = sorted(vals, key=itemgetter(1))
     out = torch.zeros_like(mat)
-    pair_default = defaultdict(lambda: -1)
     while vals:
         val = vals.pop()
         i, j = val[0]
         out[i,j], out[j,i] = 1., 1.
-        pair_default[i], pair_default[j] = j, i
         vals = list(filter(lambda val: not set((i,j)).intersection(set(val[0])), vals))
     out.fill_diagonal_(diagonal)
-    pair_dict = {i: pair_default[i] for i in range(L)}
-    return out, pair_dict
+    return out
+
+
+def tensor2pairmap(input: torch.Tensor) -> PairMap:
+    '''Converts binarized contact matrix to `PairMap`'''
+    assert input.dim() == 2
+    values, js = torch.max(input, 1)
+    js[values == 0.] = NO_CONTACT
+    pair_map = dict(enumerate(js))
+    return pair_map
 
 
 def calcF1MCC(sequence: str, positive_list: PairMap, predict_list: PairMap) -> Tuple[float,float]:

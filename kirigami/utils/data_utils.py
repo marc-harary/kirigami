@@ -1,6 +1,7 @@
+from typing import Callable
 import torch
 from torch.utils.data import Dataset, DataLoader
-from kirigami.nn.Embedding import *
+from kirigami.utils.utilities import *
 
 
 __all__ = ['TensorDataset', 'AbstractASCIIDataset']
@@ -20,9 +21,9 @@ class TensorDataset(Dataset):
 
 
 class AbstractASCIIDataset(Dataset):
-    def __init__(self, list_file: str, embed: AbstractEmbedding):
+    def __init__(self, list_file: str, embedding: Callable):
         super(AbstractDataset, self).__init__()
-        self.embed = embed
+        self.embedding = embedding
         with open(list_file, 'r') as f:
             self.files = f.read().splitlines()
 
@@ -33,19 +34,19 @@ class AbstractASCIIDataset(Dataset):
         file = self.files[idx]
         with open(file, 'r') as f:
             file_str = f.read()
-        return self.embed(file_str)
+        return self.embedding(file_str)
 
 
 class FastaDataset(AbstractASCIIDataset):
     def __init__(self, list_file: str):
-        super(FastaDataset, self).__init__(list_file, SequenceEmbedding())
+        super(FastaDataset, self).__init__(list_file, seq2tensor)
 
 
 class LabelDataset(AbstractASCIIDataset):
     def __init__(self, list_file: str):
-        super(FastaDataset, self).__init__(list_file, LabelEmbedding())
+        super(FastaDataset, self).__init__(list_file, lab2tensor)
 
 
 class BpseqDataset(AbstractASCIIDataset):
     def __init__(self, list_file: str):
-        super(BpseqDataset, self).__init__(list_file, BpseqEmbedding())
+        super(BpseqDataset, self).__init__(list_file, bpseq2tensor)

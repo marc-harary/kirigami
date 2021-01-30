@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Tuple
 import os
 from tqdm import tqdm
 import torch
@@ -26,10 +26,10 @@ class AbstractASCIIDataset(Dataset):
                 txt = f.read()
             self.data.append(embedding(txt))
 
-    def __len__(self):
+    def __len__(self) -> int:
         return len(self.data)
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         return self.data[idx]
 
 

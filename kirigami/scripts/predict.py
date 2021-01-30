@@ -1,46 +1,49 @@
 from argparse import Namespace
 from pathlib import Path
-from multipledispatch import dispatch
+import os
+from tqdm import tqdm
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
-from tqdm import tqdm
-import munch
-from kirigami.utils.data_utils import *
-import kirigami.nn
+from kirigami.utils.data import FastaDataset
+from kirigami.utils.utilities import path2munch
 
 
 __all__ = ['predict']
 
 
-@dispatch(Namespace)
-def predict(args) -> None:
-    config = path2munch(args.config)
-    in_file = args.in_list
-    return predict(config, in_list)
-
-
-@dispatch(munch.Munch, Path):
-def predict(config, in_list, out_list) -> None:
+def predict(args: Namespace) -> None:
     '''Evaluates model from config file'''
+    config = path2munch(args.config)
+
     try:
         saved = torch.load(config.training.best)
     except os.path.exists(config.training.checkpoint):
         saved = torch.load(config.training.checkpoint)
-    finally:
+    else:
         raise FileNotFoundError('Can\'t find checkpoint files')
 
     model = MainNet(config.model)
     model.load_state_dict(saved['model_state_dict'])
     model.eval()
 
-    dataset = FastaDataset(in_file)
-    with open(out_list, 'r') as f:
-        lines = f.read().splitlines()
+    out_files = []
+    with open(config.in_file, 'r') as f:
+        in_files = f.read().splitlines()
+        for file in in_files:
+            file = os.path.basename(file)
+            file, _ = os.path.splitext(file)
+            file += '.bpseq'
+            file = os.path.join(args.out_directory, file)
+            out_files.append(file)
 
-    for out_file, seq in tqdm(zip(lines, dataset)):
-        pred = model(seq)
-        pred = get_contacts(pred)
-        bpseq_str = contacts2bpseq(pred)
+    dataset = FastaDataset(args.in_file, args.quiet)
+    loop_zip = zip(out_files, dataset)
+    loop = loop_zip if args.quiet else tqdm(loop_zip)
+
+    for out_file, sequence in loop:
+        pred = model(sequence)
+        pred = binarize(pred)
+        bpseq_str = tensor2bpseq(sequence, pred)
         with open(out_file, 'w') as f:
             f.write(bpseq_str)

@@ -130,6 +130,16 @@ def tensor2pairmap(input: torch.Tensor) -> PairMap:
     return pair_map
 
 
+def tensor2sequence(input: torch.Tensor) -> str:
+    '''Converts embedded `FASTA` sequence to string'''
+    chars_embed = input[:4, :, 0].T
+    chars = []
+    for row in chars_embed:
+        _, idx = torch.max(row, 0)
+        chars.append(BASES[idx])
+    return ''.join(chars)
+
+
 def calcF1MCC(sequence: str, positive_list: PairMap, predict_list: PairMap) -> Tuple[float,float]:
     '''Returns F1 score and MCC of sequence and predicted contact points'''
     L = len(sequence)

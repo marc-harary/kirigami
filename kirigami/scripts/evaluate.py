@@ -1,63 +1,62 @@
-import sys
 import os
-import json
-import argparse
-import pathlib
-from multipledispatch import dispatch
-import torch
-from torch import nn
-from torch.utils.data import DataLoader
+from argparse import Namespace
 from tqdm import tqdm
-import munch
-from kirigami.utils.data_utils import *
-from kirigami.nn.SPOT import *
-from kirigami.nn.Embedding import *
-from kirigami.utils.utils import *
+import torch
+from torch.nn import *
+from torch.utils.data import DataLoader
+from kirigami.utils.data import BpseqDataset
+from kirigami.utils.utilities import *
 
 
 __all__ = ['evaluate']
 
 
-@dispatch(argparse.Namespace)
-def evaluate(args) -> None:
-    config = path2munch(args.config)
-    in_list = args.in_list
-    quiet = args.quiet
-    return evaluate(config, in_list, out_file, quiet)
-
-
-@dispatch(munch.Munch, pathlib.Path, pathlib.Path, bool)
-def evaluate(config, in_list, out_file, quiet) -> None:
+def evaluate(args: Namespace) -> None:
     '''Evaluates model from config file'''
-    if os.path.exists(config.training.best):
+    config = path2munch(args.config)
+
+    try:
         saved = torch.load(config.training.best)
-    else:
+    except os.path.exists(config.training.checkpoint):
         saved = torch.load(config.training.checkpoint)
+    else:
+        raise FileNotFoundError('Can\'t find checkpoint files')
 
     model = MainNet(config.model)
     model.load_state_dict(saved['model_state_dict'])
-    model.eval()
 
-    evaluate_set = BpseqDataset(in_list)
-    evaluate_loader = DataLoader(evaluate_set)
-    evaluate_loop = tqdm(evaluate_loader) if not quiet else evaluate_loader
-    loss_func = getattr(nn, config.loss_func.class_name)(**config.loss_func.params)
+    out_files = []
+    with open(config.in_file, 'r') as f:
+        in_files = f.read().splitlines()
+        for file in in_files:
+            basename = file = os.path.basename(file)
+            file, _ = os.path.splitext(file)
+            file += '.bpseq'
+            file = os.path.join(args.out_directory, file)
+            out_files.append((basename, file))
 
-    with open(in_list, 'r') as f:
-        files = f.read().splitlines()
-    names = []
-    for file in files:
-        basename = os.path.basename(file)
-        basename, _ = os.path.splitext(file)
-        names.append(basename)
+    dataset = BpseqDataset(args.in_file, args.quiet)
+    loader = DataLoader(dataset)
+    loop_zip = zip(out_files, loader)
+    loop = loop_zip if args.quiet else tqdm(loop_zip)
 
-    with open(out_file, 'w') as f:
-        evaluate_loss = 0.
-        for name, (seq, lab) in zip(names, evaluate_loop):
-            pred = model(seq)
-            loss = loss_func(pred, lab)
-            evaluate_loss += loss
-            # F1, MCC = calcF1MCC( 
-            # f.write(f'{
-    test_loss_mean = test_loss / len(test_loop)
-    print(f'Mean test loss: {test_loss_mean}')
+    csv_list = ['basename,loss,mcc,f1']
+    loss_tot = 0.
+    for (basename, out_file), (sequence, label) in loop:
+        pred = model(sequence)
+        loss = loss_func(pred, label)
+        loss_tot += loss
+        pred = binarize(pred)
+        pair_map_pred = tensor2pairmap(pred)
+        pair_map_ground = tensor2pairmap(label)
+        sequence_str = tensor2string(sequence)
+        mcc, f1 = calcMCCF1(sequence_str, pair_map_pred, pair_map_ground)
+        out_str.append( f'{basename},{loss},{mcc},{f1}\n')
+
+    if not args.quiet:
+       mean_loss = loss_tot / len(loader)
+       print(f'Mean loss for test set: {mean_loss}')
+
+    with open(args.out_file, 'w') as f:
+        for line in csv_list:
+            csv_list.write(line)

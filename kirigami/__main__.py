@@ -8,7 +8,7 @@ def main():
     parser.add_argument('--quiet', '-q', type=bool, help='quiet', default=False)
     subparsers = parser.add_subparsers(dest='command', required=True)
 
-    parser_embed = subparsers.add_parser('embed', help='embed .bpseq files')
+    parser_embed = subparsers.add_parser('predict', help='predict structure of `FASTA` files')
     parser_embed.add_argument('--in-list', required=True, type=pathlib.Path, help='path to list file')
     parser_embed.add_argument('--out-directory', required=True, type=pathlib.Path, help='path to output directory')
     parser_embed.set_defaults(func=embed)

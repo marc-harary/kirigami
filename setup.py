@@ -6,9 +6,5 @@ setup(name='kirigami',
       author='Marc Harary',
       author_email='marc.harary@yale.edu',
       packages=find_packages(),
-      entry_points = {
-              'console_scripts': [
-                'kirigami = kirigami.__main__:main'
-              ],
-          },
+      entry_points = {'console_scripts': ['kirigami = kirigami.__main__:main']},
      )

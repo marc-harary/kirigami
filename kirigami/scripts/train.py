@@ -1,6 +1,7 @@
 import os
 import json
 import argparse
+import tempfile
 from multipledispatch import dispatch
 from tqdm import tqdm
 import munch
@@ -31,9 +32,21 @@ def train(config, quiet) -> None:
     loss_func = getattr(nn, config.loss_func.class_name)(**config.loss_func.params)
     optimizer = getattr(torch.optim, config.optim.class_name)(model.parameters(),
                                                             **config.optim.params)
+    
+    fp = tempfile.TemporaryFile()
+    with open(config.data.training_list, 'r') as f:
+        files = f.read().splitlines() 
 
-    if not os.listdir(config.data.embedding_directory):
-        train_bpseq_dataset = BpseqDataset(config.data.training_list)
+    for file in train_bpseq:
+        with open(file, 'r') as f:
+            file = f.read()
+        file_embed = bpseq2tensor(file)
+        file = os.path.basename(file)
+        file, _ = os.path.splitext(file)
+        file = os.path.join(out_dir, file)
+        file += '.pt'
+        torch.save(file_embed, file) 
+    
         train_bpseq_dataset.embed(config.data.embedding_directory, config.data.embedding_list)
 
     train_set = TensorDataset(config.data.embedding_list):

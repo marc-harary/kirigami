@@ -57,7 +57,7 @@ def evaluate(config, in_list, out_file, quiet) -> None:
             pred = model(seq)
             loss = loss_func(pred, lab)
             evaluate_loss += loss
-            F1, MCC = calcF1MCC( 
-            f.write(f'{
+            # F1, MCC = calcF1MCC( 
+            # f.write(f'{
     test_loss_mean = test_loss / len(test_loop)
     print(f'Mean test loss: {test_loss_mean}')

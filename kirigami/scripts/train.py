@@ -20,11 +20,11 @@ __all__ = ['train']
 @dispatch(argparse.Namespace)
 def train(args) -> None:
     config = path2munch(args.config)
-    return train(config)
+    return train(config, args.quiet)
 
 
-@dispatch(munch.Munch)
-def train(config) -> None:
+@dispatch(munch.Munch, bool)
+def train(config, quiet) -> None:
     '''Train deep network based on config files'''
     start_epoch = 0
     model = MainNet(config.model)
@@ -32,6 +32,11 @@ def train(config) -> None:
     optimizer = getattr(torch.optim, config.optim.class_name)(model.parameters(),
                                                             **config.optim.params)
 
+    if not os.listdir(config.data.embedding_directory):
+        train_bpseq_dataset = BpseqDataset(config.data.training_list)
+        train_bpseq_dataset.embed(config.data.embedding_directory, config.data.embedding_list)
+
+    train_set = TensorDataset(config.data.embedding_list):
 
     best_val_loss = float('inf')
     dataset_class = TensorDataset if config.data.pre_embed else BpseqDataset
@@ -39,7 +44,7 @@ def train(config) -> None:
     train_loader = DataLoader(train_set,
                               batch_size=config.data.batch_size,
                               shuffle=config.data.shuffle)
-    train_loop = tqdm(train_loader) if config.training.show_bar else train_loader
+    train_loop = tqdm(train_loader) if not quiet else train_loader
 
 
     if config.data.validation_list:
@@ -47,7 +52,7 @@ def train(config) -> None:
         val_loader = DataLoader(val_set,
                                 batch_size=config.data.batch_size,
                                 shuffle=config.data.shuffle)
-        val_loop = tqdm(val_loader) if config.training.show_bar else val_loader
+        val_loop = tqdm(val_loader) if not quiet else val_loader
 
 
     if config.resume:

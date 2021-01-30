@@ -1,7 +1,8 @@
 from typing import Dict
+from collections import defaultdict
 import torch
 
-BASES = 'aucg'
+BASES = 'AUCG'
 N_BASES = len(BASES)
 DEFAULT = -1 * torch.ones(N_BASES)
 BASE_DICT = defaultdict(lambda: DEFAULT, zip(BASES, torch.eye(N_BASES)))

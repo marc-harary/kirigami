@@ -36,8 +36,10 @@ def pairmap2tensor(pairs: PairMap, out_dim: int = 4) -> torch.Tensor:
     '''Converts `PairMap` to contact matrix (`torch.Tensor`)'''
     L = len(pairs)
     out = torch.zeros(L, L)
-    for pair in pairs:
-        out[pair] = 1.
+    for i, j in pairs.items():
+        if j == -1:
+            continue
+        out[i,j] = 1.
     while out_dim > out.dim():
        out.unsqueeze_(0)
     return out
@@ -50,7 +52,7 @@ def sequence2tensor(sequence: str) -> torch.Tensor:
     out = torch.empty(2 * N_BASES, L, L)
     for i in range(L):
         for j in range(L):
-            out[:, i, j] = torch.cat((one_hot[i], one_hot[j]))
+            out[:,i,j] = torch.cat((one_hot[i], one_hot[j]))
     return out
 
 
@@ -89,7 +91,7 @@ def bpseq2pairmap(bpseq: str) -> Tuple[str, PairMap]:
 
 def bpseq2tensor(bpseq: str) -> Tuple[torch.Tensor, torch.Tensor]:
     '''Converts `.bpseq` file to `torch.Tensor`'s'''
-    sequence, pair_map = bpseq2pairs(bpseq)
+    sequence, pair_map = bpseq2pairmap(bpseq)
     return sequence2tensor(sequence), pairmap2tensor(pair_map)
 
 
@@ -100,7 +102,7 @@ def pairmap2bpseq(sequence: str, pair_map: PairMap) -> str:
     return ''.join(out_list)
 
 
-def binarize(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> torch.Tensor
+def binarize(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> torch.Tensor:
     '''Binarizes contact matrix from deep network'''
     mat = input.squeeze()
     L = mat.shape[0]

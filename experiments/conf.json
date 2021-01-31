@@ -27,9 +27,7 @@
     "model": [
         {
             "class_name": "kirigami.nn.SPOT.BlockA",
-            "kwargs": {
-                "p": 0.4
-            }
+            "kwargs": {"p": 0.4}
         },
         {
             "class_name": "torch.nn.Sigmoid",

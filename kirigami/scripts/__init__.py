@@ -1,3 +1,3 @@
-from kirigami.evaluate import *
-from kirigami.train import *
-from kirigami.predict import *
+from kirigami.scripts.evaluate import *
+from kirigami.scripts.train import *
+from kirigami.scripts.predict import *

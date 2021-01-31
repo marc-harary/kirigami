@@ -7,7 +7,7 @@ from operator import itemgetter
 from copy import deepcopy
 from itertools import permutations
 import torch
-from munch import Munch
+import munch
 from kirigami._globals import *
 
 
@@ -24,7 +24,7 @@ __all__ = ['path2munch',
            'calcf1mcc']
 
 
-def path2munch(path: Path) -> Munch:
+def path2munch(path: Path) -> munch.Munch:
     '''Reads .json file saved at PATH and returns `Munch` object'''
     with open(path, 'r') as f:
         txt = f.read()

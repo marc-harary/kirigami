@@ -1,3 +1,3 @@
-from .embed import *
-from .evaluate import *
-from .train import *
+from kirigami.evaluate import *
+from kirigami.train import *
+from kirigami.predict import *

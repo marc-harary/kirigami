@@ -11,7 +11,7 @@ RNA secondary structure prediction via deep learning.
 ```
 docker pull python
 chmod +x run.sh
-./run.sh python install .
+./run.sh pip install .
 ```
 
 ## Usage

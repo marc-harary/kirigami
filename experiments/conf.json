@@ -2,16 +2,15 @@
     "data": {
         "training_list": "/path/to/training/list",
         "validation_list": "/path/to/validation/list",
-        "batch_size": 1,
-        "shuffle": true
+        "checkpoint": "checkpoint.pt",
+        "best": "best.pt"
     },
 
     "training": {
         "epochs": 1000,
-        "checkpoint": "checkpoint.pt",
-        "best": "best.pt",
-        "print_frequency": 10,
-        "show_bar": true
+        "batch_size": 1,
+        "shuffle": true,
+        "print_frequency": 10
     },
 
     "loss_func": {

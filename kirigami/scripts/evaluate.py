@@ -16,9 +16,9 @@ def evaluate(args: Namespace) -> None:
     config = path2munch(args.config)
 
     try:
-        saved = torch.load(config.training.best)
-    except os.path.exists(config.training.checkpoint):
-        saved = torch.load(config.training.checkpoint)
+        saved = torch.load(config.data.best)
+    except:
+        saved = torch.load(config.data.checkpoint)
     else:
         raise FileNotFoundError('Can\'t find checkpoint files')
 
@@ -40,7 +40,7 @@ def evaluate(args: Namespace) -> None:
     loop_zip = zip(out_files, loader)
     loop = loop_zip if args.quiet else tqdm(loop_zip)
 
-    csv_list = ['basename,loss,mcc,f1']
+    csv_list = ['basename,loss,mcc,f1\n']
     loss_tot = 0.
     for (basename, out_file), (sequence, label) in loop:
         pred = model(sequence)
@@ -51,7 +51,7 @@ def evaluate(args: Namespace) -> None:
         pair_map_ground = tensor2pairmap(label)
         sequence_str = tensor2string(sequence)
         mcc, f1 = calcMCCF1(sequence_str, pair_map_pred, pair_map_ground)
-        out_str.append( f'{basename},{loss},{mcc},{f1}\n')
+        out_str.append(f'{basename},{loss},{mcc},{f1}\n')
 
     if not args.quiet:
        mean_loss = loss_tot / len(loader)

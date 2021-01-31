@@ -27,8 +27,8 @@ def train(args: argparse.Namespace) -> None:
     best_val_loss = float('inf')
     train_set = BpseqDataset(config.data.training_list, args.quiet)
     train_loader = DataLoader(train_set,
-                              batch_size=config.data.batch_size,
-                              shuffle=config.data.shuffle)
+                              batch_size=config.training.batch_size,
+                              shuffle=config.training.shuffle)
     train_loop = train_loader if args.quiet else tqdm(train_loader)
 
     if config.data.validation_list:
@@ -39,8 +39,8 @@ def train(args: argparse.Namespace) -> None:
         val_loop = val_loader if args.quiet else tqdm(val_loader)
 
     if args.resume:
-        assert os.path.exists(config.training.best), "Cannot find checkpoint file"
-        best = torch.load(config.training.best)
+        assert os.path.exists(config.data.best), "Cannot find checkpoint file"
+        best = torch.load(config.data.best)
         model.load_state_dict(best['model_state_dict'])
         optimizer.load_state_dict(best['optimizer_state_dict'])
         start_epoch = best['epoch']
@@ -61,7 +61,7 @@ def train(args: argparse.Namespace) -> None:
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': train_loss_mean},
-                   config.training.checkpoint)
+                   config.data.checkpoint)
 
         if config.data.validation_list:
             val_loss_tot = 0.
@@ -76,7 +76,7 @@ def train(args: argparse.Namespace) -> None:
                             'model_state_dict': model.state_dict(),
                             'optimizer_state_dict': optimizer.state_dict(),
                             'loss': best_val_loss},
-                           config.training.best)
+                           config.data.best)
 
         if epoch % config.training.print_frequency == 0:
             print(f'Mean training loss for epoch {epoch}: {train_loss_mean}')

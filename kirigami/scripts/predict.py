@@ -17,9 +17,9 @@ def predict(args: Namespace) -> None:
     config = path2munch(args.config)
 
     try:
-        saved = torch.load(config.training.best)
-    except os.path.exists(config.training.checkpoint):
-        saved = torch.load(config.training.checkpoint)
+        saved = torch.load(config.data.best)
+    except:
+        saved = torch.load(config.data.checkpoint)
     else:
         raise FileNotFoundError('Can\'t find checkpoint files')
 

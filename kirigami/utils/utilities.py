@@ -7,7 +7,7 @@ from operator import itemgetter
 from copy import deepcopy
 from itertools import permutations
 import torch
-import munch
+from munch import Munch
 from kirigami._globals import *
 
 
@@ -17,13 +17,14 @@ __all__ = ['path2munch',
            'label2tensor',
            'bpseq2tensor',
            'tensor2pairmap',
+           'tensor2sequence',
            'bpseq2pairmap',
            'pairmap2bpseq',
            'binarize',
-           'calcF1MCC']
+           'calcf1mcc']
 
 
-def path2munch(path: Path) -> munch.Munch:
+def path2munch(path: Path) -> Munch:
     '''Reads .json file saved at PATH and returns `Munch` object'''
     with open(path, 'r') as f:
         txt = f.read()
@@ -34,8 +35,8 @@ def path2munch(path: Path) -> munch.Munch:
 
 def pairmap2tensor(pairs: PairMap, out_dim: int = 4) -> torch.Tensor:
     '''Converts `PairMap` to contact matrix (`torch.Tensor`)'''
-    L = len(pairs)
-    out = torch.zeros(L, L)
+    length = len(pairs)
+    out = torch.zeros(length, length)
     for i, j in pairs.items():
         if j == -1:
             continue
@@ -47,11 +48,11 @@ def pairmap2tensor(pairs: PairMap, out_dim: int = 4) -> torch.Tensor:
 
 def sequence2tensor(sequence: str) -> torch.Tensor:
     '''Converts `FASTA` sequence to `torch.Tensor`'''
-    L = len(sequence)
+    length = len(sequence)
     one_hot = torch.stack([BASE_DICT[char] for char in sequence.upper()])
-    out = torch.empty(2 * N_BASES, L, L)
-    for i in range(L):
-        for j in range(L):
+    out = torch.empty(2 * N_BASES, length, length)
+    for i in range(length):
+        for j in range(length):
             out[:,i,j] = torch.cat((one_hot[i], one_hot[j]))
     return out
 
@@ -60,8 +61,8 @@ def label2tensor(label: str, out_dim: int = 4) -> torch.Tensor:
     '''Converts label file to contact matrix (`torch.Tensor`)'''
     lines = label.splitlines()
     matches = re.findall(r'[\d]+$', lines[0])
-    L = int(matches[0])
-    out = torch.zeros(L, L)
+    length = int(matches[0])
+    out = torch.zeros(length, length)
     for line in lines:
         if line.startswith('#') or line.startswith('i'):
             continue
@@ -77,7 +78,7 @@ def bpseq2pairmap(bpseq: str) -> Tuple[str, PairMap]:
     '''Converts `.bpseq` file to string and `PairMap`'''
     lines = bpseq.splitlines()
     lines = list(filter(lambda line: not line.startswith('#'), lines))
-    L = len(lines)
+    length = len(lines)
     pair_default = defaultdict(lambda: NO_CONTACT)
     sequence = ''
     for line in lines:
@@ -85,7 +86,7 @@ def bpseq2pairmap(bpseq: str) -> Tuple[str, PairMap]:
         i, j = int(i) - 1, int(j) - 1
         pair_default[i], pair_default[j] = j, i
         sequence += base.upper()
-    pair_map = {i: pair_default[i] for i in range(L)}
+    pair_map = {i: pair_default[i] for i in range(length)}
     return sequence, pair_map
 
 
@@ -105,9 +106,9 @@ def pairmap2bpseq(sequence: str, pair_map: PairMap) -> str:
 def binarize(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> torch.Tensor:
     '''Binarizes contact matrix from deep network'''
     mat = input.squeeze()
-    L = mat.shape[0]
-    assert mat.dim() == 2 and L == mat.shape[1], "Input tensor must be square"
-    idxs = list(permutations(L, 2))
+    length = mat.shape[0]
+    assert mat.dim() == 2 and length == mat.shape[1], "Input tensor must be square"
+    idxs = list(permutations(length, 2))
     vals = list(zip(idxs, [input[idx] for idx in idxs]))
     vals = list(filter(lambda val: val[1] >= thres, vals))
     vals = sorted(vals, key=itemgetter(1))
@@ -132,7 +133,7 @@ def tensor2pairmap(input: torch.Tensor) -> PairMap:
 
 def tensor2sequence(input: torch.Tensor) -> str:
     '''Converts embedded `FASTA` sequence to string'''
-    chars_embed = input[:4, :, 0].T
+    chars_embed = input[:N_BASES, :, 0].T
     chars = []
     for row in chars_embed:
         _, idx = torch.max(row, 0)
@@ -140,24 +141,24 @@ def tensor2sequence(input: torch.Tensor) -> str:
     return ''.join(chars)
 
 
-def calcF1MCC(sequence: str, positive_list: PairMap, predict_list: PairMap) -> Tuple[float,float]:
-    '''Returns F1 score and MCC of sequence and predicted contact points'''
-    L = len(sequence)
-    total = L * (L-1) / 2
+def calcf1mcc(positive_list: PairMap, predict_list: PairMap) -> Tuple[float,float]:
+    '''Returns f1 score and mcc of sequence and predicted contact points'''
+    length = len(sequence)
+    total = length * (length-1) / 2
     predicted = set(predict_list)
     positive = set(positive_list)
-    TP = 1. * len(predicted.intersection(positive))
-    FP = len(predicted) - TP
-    FN = len(positive) - TP
-    TN = total - TP - FP - FN
+    tp = 1. * len(predicted.intersection(positive))
+    fp = len(predicted) - tp
+    fn = len(positive) - tp
+    tn = total - tp - fp - fn
     if len(predicted) == 0 or len(positive) == 0:
         return 0, 0
-    precision = TP / len(predicted)
-    recall = TP / len(positive)
-    F1 = 0
-    MCC = 0
-    if TP > 0:
-        F1 = 2 / (1/precision + 1/recall)
-    if (TP+FP) * (TP+FN) * (TN+FP) * (TN+FN) > 0:
-        MCC = (TP*TN-FP*FN) / ((TP+FP)*(TP+FN)*(TN+FP)*(TN+FN))**.5
-    return F1, MCC
+    precision = tp / len(predicted)
+    recall = tp / len(positive)
+    f1 = 0
+    mcc = 0
+    if tp > 0:
+        f1 = 2 / (1/precision + 1/recall)
+    if (tp+fp) * (tp+fn) * (tn+fp) * (tn+fn) > 0:
+        mcc = (tp*tn-fp*fn) / ((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))**.5
+    return f1, mcc

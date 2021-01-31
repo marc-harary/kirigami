@@ -38,7 +38,7 @@ def pairmap2tensor(pairs: PairMap, out_dim: int = 4) -> torch.Tensor:
     length = len(pairs)
     out = torch.zeros(length, length)
     for i, j in pairs.items():
-        if j == -1:
+        if j == NO_CONTACT:
             continue
         out[i,j] = 1.
     while out_dim > out.dim():

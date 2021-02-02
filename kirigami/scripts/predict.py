@@ -6,7 +6,8 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 from kirigami.utils.data import FastaDataset
-from kirigami.utils.utilities import path2munch
+from kirigami.utils.utilities import path2munch, binarize, tensor2bpseq
+from kirigami.nn.MainNet import MainNet
 
 
 __all__ = ['predict']
@@ -23,12 +24,14 @@ def predict(args: Namespace) -> None:
     else:
         raise FileNotFoundError('Can\'t find checkpoint files')
 
+    os.path.exists(args.out_directory) or os.mkdir(args.out_directory)
+
     model = MainNet(config.model)
     model.load_state_dict(saved['model_state_dict'])
     model.eval()
 
     out_files = []
-    with open(config.in_file, 'r') as f:
+    with open(args.in_file, 'r') as f:
         in_files = f.read().splitlines()
         for file in in_files:
             file = os.path.basename(file)
@@ -38,7 +41,10 @@ def predict(args: Namespace) -> None:
             out_files.append(file)
 
     dataset = FastaDataset(args.in_file, args.quiet)
-    loop_zip = zip(out_files, dataset)
+    dataloader = DataLoader(dataset,
+                            batch_size=1,
+                            shuffle=False)
+    loop_zip = zip(out_files, dataloader)
     loop = loop_zip if args.quiet else tqdm(loop_zip)
 
     for out_file, sequence in loop:

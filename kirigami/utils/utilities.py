@@ -18,6 +18,7 @@ __all__ = ['path2munch',
            'bpseq2tensor',
            'tensor2pairmap',
            'tensor2sequence',
+           'tensor2bpseq',
            'bpseq2pairmap',
            'pairmap2bpseq',
            'binarize',
@@ -48,8 +49,9 @@ def pairmap2tensor(pairs: PairMap, out_dim: int = 3) -> torch.Tensor:
 
 def sequence2tensor(sequence: str) -> torch.Tensor:
     '''Converts `FASTA` sequence to `torch.Tensor`'''
-    length = len(sequence)
-    one_hot = torch.stack([BASE_DICT[char] for char in sequence.upper()])
+    sequence_copy = sequence.strip().upper()
+    length = len(sequence_copy)
+    one_hot = torch.stack([BASE_DICT[char] for char in sequence_copy])
     out = torch.empty(2 * N_BASES, length, length)
     for i in range(length):
         for j in range(length):
@@ -98,7 +100,7 @@ def bpseq2tensor(bpseq: str) -> Tuple[torch.Tensor, torch.Tensor]:
 
 def pairmap2bpseq(sequence: str, pair_map: PairMap) -> str:
     '''Converts `FASTA`-style sequence and `PairMap` to `.bpseq`-style string'''
-    assert len(sequence) == len(pairs)
+    assert len(sequence) == len(pair_map)
     out_list = [f'{i+1} {char.upper()} {pair_map[i]+1}\n' for i, char in enumerate(sequence)]
     return ''.join(out_list)
 
@@ -108,8 +110,8 @@ def binarize(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> to
     mat = input.squeeze()
     length = mat.shape[0]
     assert mat.dim() == 2 and length == mat.shape[1], "Input tensor must be square"
-    idxs = list(permutations(length, 2))
-    vals = list(zip(idxs, [input[idx] for idx in idxs]))
+    idxs = list(permutations(range(length), 2))
+    vals = list(zip(idxs, [mat[idx] for idx in idxs]))
     vals = list(filter(lambda val: val[1] >= thres, vals))
     vals = sorted(vals, key=itemgetter(1))
     out = torch.zeros_like(mat)
@@ -133,12 +135,19 @@ def tensor2pairmap(input: torch.Tensor) -> PairMap:
 
 def tensor2sequence(input: torch.Tensor) -> str:
     '''Converts embedded `FASTA` sequence to string'''
-    chars_embed = input[:N_BASES, :, 0].T
+    chars_embed = input.squeeze()
+    chars_embed = chars_embed[:N_BASES, :, 0].T
     chars = []
     for row in chars_embed:
         _, idx = torch.max(row, 0)
         chars.append(BASES[idx])
     return ''.join(chars)
+
+
+def tensor2bpseq(sequence: torch.Tensor, label: torch.Tensor) -> str:
+    sequence_str = tensor2sequence(sequence)
+    label_pair_map = tensor2pairmap(label)
+    return pairmap2bpseq(sequence_str, label_pair_map)
 
 
 def calcf1mcc(positive_list: PairMap, predict_list: PairMap) -> Tuple[float,float]:

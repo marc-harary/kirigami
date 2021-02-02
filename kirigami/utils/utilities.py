@@ -33,7 +33,7 @@ def path2munch(path: Path) -> munch.Munch:
     return conf
 
 
-def pairmap2tensor(pairs: PairMap, out_dim: int = 4) -> torch.Tensor:
+def pairmap2tensor(pairs: PairMap, out_dim: int = 3) -> torch.Tensor:
     '''Converts `PairMap` to contact matrix (`torch.Tensor`)'''
     length = len(pairs)
     out = torch.zeros(length, length)

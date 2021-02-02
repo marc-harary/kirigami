@@ -9,7 +9,7 @@ def main():
     subparsers = parser.add_subparsers(dest='command', required=True)
 
     parser_embed = subparsers.add_parser('predict', help='predict structure of `FASTA` files')
-    parser_train.add_argument('--config', required=True, type=Path, help='path to config file')
+    parser_embed.add_argument('--config', required=True, type=Path, help='path to config file')
     parser_embed.add_argument('--in-file', required=True, type=Path, help='path to list file')
     parser_embed.add_argument('--out-directory', required=True, type=Path, help='path to output directory')
     parser_embed.set_defaults(func=predict)

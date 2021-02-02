@@ -47,10 +47,8 @@ def evaluate(args: Namespace) -> None:
         loss = loss_func(pred, label)
         loss_tot += loss
         pred = binarize(pred)
-        pair_map_pred = tensor2pairmap(pred)
-        pair_map_ground = tensor2pairmap(label)
-        sequence_str = tensor2string(sequence)
-        mcc, f1 = calcMCCF1(sequence_str, pair_map_pred, pair_map_ground)
+        pair_map_pred, pair_map_ground = tensor2pairmap(pred), tensor2pairmap(label)
+        mcc, f1 = calcMCCF1(pair_map_pred, pair_map_ground)
         out_str.append(f'{basename},{loss},{mcc},{f1}\n')
 
     if not args.quiet:

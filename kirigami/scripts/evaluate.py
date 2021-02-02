@@ -49,7 +49,7 @@ def evaluate(args: Namespace) -> None:
         pred = binarize(pred)
         pair_map_pred, pair_map_ground = tensor2pairmap(pred), tensor2pairmap(label)
         mcc, f1 = calcMCCF1(pair_map_pred, pair_map_ground)
-        out_str.append(f'{basename},{loss},{mcc},{f1}\n')
+        csv_list.append(f'{basename},{loss},{mcc},{f1}\n')
 
     if not args.quiet:
        mean_loss = loss_tot / len(loader)

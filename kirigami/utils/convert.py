@@ -25,15 +25,6 @@ __all__ = ['path2munch',
            'calcf1mcc']
 
 
-def path2munch(path: Path) -> munch.Munch:
-    '''Reads .json file saved at PATH and returns `Munch` object'''
-    with open(path, 'r') as f:
-        txt = f.read()
-    conf_json = json.loads(txt)
-    conf =  munch.munchify(conf_json)
-    return conf
-
-
 def pairmap2tensor(pairs: PairMap, out_dim: int = 3) -> torch.Tensor:
     '''Converts `PairMap` to contact matrix (`torch.Tensor`)'''
     length = len(pairs)
@@ -107,6 +98,7 @@ def pairmap2bpseq(sequence: str, pair_map: PairMap) -> str:
 
 def binarize(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> torch.Tensor:
     '''Binarizes contact matrix from deep network'''
+    import pdb; pdb.set_trace()
     mat = input.squeeze()
     length = mat.shape[0]
     assert mat.dim() == 2 and length == mat.shape[1], "Input tensor must be square"

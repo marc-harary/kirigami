@@ -25,6 +25,15 @@ __all__ = ['path2munch',
            'calcf1mcc']
 
 
+def path2munch(path: Path) -> munch.Munch:
+    '''Reads .json file saved at PATH and returns `Munch` object'''
+    with open(path, 'r') as f:
+        txt = f.read()
+    conf_json = json.loads(txt)
+    conf =  munch.munchify(conf_json)
+    return conf
+
+
 def pairmap2tensor(pairs: PairMap, out_dim: int = 3) -> torch.Tensor:
     '''Converts `PairMap` to contact matrix (`torch.Tensor`)'''
     length = len(pairs)
@@ -98,7 +107,6 @@ def pairmap2bpseq(sequence: str, pair_map: PairMap) -> str:
 
 def binarize(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> torch.Tensor:
     '''Binarizes contact matrix from deep network'''
-    import pdb; pdb.set_trace()
     mat = input.squeeze()
     length = mat.shape[0]
     assert mat.dim() == 2 and length == mat.shape[1], "Input tensor must be square"
@@ -118,8 +126,9 @@ def binarize(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> to
 
 def tensor2pairmap(input: torch.Tensor) -> PairMap:
     '''Converts binarized contact matrix to `PairMap`'''
-    assert input.dim() == 2
-    values, js = torch.max(input, 1)
+    mat = input.squeeze()
+    assert mat.dim() == 2
+    values, js = torch.max(mat, 1)
     js[values == 0.] = NO_CONTACT
     pair_map = dict(enumerate(js))
     return pair_map
@@ -144,7 +153,8 @@ def tensor2bpseq(sequence: torch.Tensor, label: torch.Tensor) -> str:
 
 def calcf1mcc(positive_list: PairMap, predict_list: PairMap) -> Tuple[float,float]:
     '''Returns f1 score and mcc of sequence and predicted contact points'''
-    length = len(sequence)
+    length = len(positive_list)
+    assert length == len(predict_list)
     total = length * (length-1) / 2
     predicted = set(predict_list)
     positive = set(positive_list)

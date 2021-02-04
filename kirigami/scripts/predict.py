@@ -10,7 +10,6 @@ from torch import nn
 from torch.utils.data import DataLoader
 from kirigami.utils.data import FastaDataset
 from kirigami.utils.convert import binarize, tensor2bpseq
-from kirigami.utils.path import *
 from kirigami.nn.MainNet import MainNet
 
 
@@ -20,14 +19,10 @@ __all__ = ['predict']
 @dispatch(Namespace)
 def predict(args: Namespace) -> List[Path]:
     config = path2munch(args.config)
-    return predict(config=config,
-                   in_list=args.in_list,
-                   out_list=args.out_list,
-                   out_dir=args.out_directory,
-                   quiet=args.quiet)
+    return predict(config, args.in_list, args.out_list, args.out_directory, args.quiet)
 
 
-@dispatch(: Munch, Path, Path, Path, bool)
+@dispatch(Munch, Path, Path, Path, bool)
 def predict(config: Munch,
             in_list: Path,
             out_list: Path,
@@ -46,27 +41,27 @@ def predict(config: Munch,
     model = MainNet(config.model)
     model.load_state_dict(saved['model_state_dict'])
 
-    out_bpseqs = []
+    bpseqs = []
     fp = open(out_list, 'w')
     with open(in_list, 'r') as f:
-        files = f.read().splitlines()
-    for file in files:
-        out_bpseq = os.path.basename(file)
-        out_bpseq = os.path.join(out_dir, out_bpseq)
-        out_bpseqs.append(out_bpseq)
-        fp.write(out_bpseq+'\n')
+        fastas = f.read().splitlines()
+    for fasta in fastas:
+        bpseq = os.path.basename(fasta)
+        bpseq = os.path.join(out_dir, bpseq)
+        bpseq.append(bpseq)
+        fp.write(bpseq+'\n')
     fp.close()
 
-    data_set = FastaDataset(in_list, quiet)
+    dataset = FastaDataset(in_list, quiet)
     loader = DataLoader(dataset)
-    loop_zip = zip(out_bpseqs, loader)
+    loop_zip = zip(bpseqs, loader)
     loop = loop_zip if quiet else tqdm(loop_zip)
 
-    for out_bpseq, sequence in loop:
+    for bpseq, sequence in loop:
         pred = model(sequence)
         pred = binarize(pred)
         bpseq_str = tensor2bpseq(sequence, pred)
-        with open(out_bpseq, 'w') as f:
+        with open(bpseq, 'w') as f:
             f.write(bpseq_str+'\n')
 
-    return out_bpseqs
+    return bpseqs

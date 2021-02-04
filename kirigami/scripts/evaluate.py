@@ -1,7 +1,8 @@
 import os
 from pathlib import Path
 from argparse import Namespace
-import tempfile
+from typing import List
+import csv
 from munch import Munch
 from multipledispatch import dispatch
 from tqdm import tqdm
@@ -9,22 +10,17 @@ import torch
 from torch.nn import *
 from torch.utils.data import DataLoader
 from kirigami.utils.data import BpseqDataset
-from kirigami.utils.utilities import *
-from kirigami.utils.path import *
+from kirigami.utils.convert import *
+from kirigami.nn.MainNet import MainNet
 
 
 __all__ = ['evaluate']
 
 
 @dispatch(Namespace)
-def evaluate(args: Namespace) -> None:
+def evaluate(args: Namespace) -> List[Path]:
     config = path2munch(args.config)
-    return evaluate(config=config,
-                    in_list=args.in_list,
-                    out_list=args.out_list,
-                    out_csv=args.out_csv,
-                    out_dir=args.out_dir,
-                    quiet=args.quiet)
+    return evaluate(config, args.in_list, args.out_list, args.out_csv, args.out_directory, args.quiet)
 
 
 @dispatch(Munch, Path, Path, Path, Path, bool)
@@ -32,8 +28,8 @@ def evaluate(config: Munch,
              in_list: Path,
              out_list: Path,
              out_csv: Path,
-             out_dir: Path
-             quiet: bool = False) -> None:
+             out_dir: Path,
+             quiet: bool = False) -> List[Path]:
     '''Evaluates model from config file'''
     try:
         saved = torch.load(config.data.best)
@@ -58,21 +54,30 @@ def evaluate(config: Munch,
     loader = DataLoader(dataset)
     loop_zip = zip(out_bpseqs, loader)
     loop = loop_zip if quiet else tqdm(loop_zip)
+    loss_func = eval(config.loss_func.class_name)(**config.loss_func.params)
 
     loss_tot = 0.
-    fp = open(out_file, 'w')
+    fp = open(out_csv, 'w')
     writer = csv.writer(fp)
     writer.writerow(['basename', 'loss', 'mcc', 'f1'])
     for out_bpseq, (sequence, ground) in loop:
+        import pdb; pdb.set_trace()
         pred = model(sequence)
-        loss = loss_func(pred, ground)
+        loss = float(loss_func(pred, ground))
         loss_tot += loss
         pred = binarize(pred)
         pair_map_pred, pair_map_ground = tensor2pairmap(pred), tensor2pairmap(ground)
-        mcc, f1 = calcMCCF1(pair_map_pred, pair_map_ground)
+        f1, mcc = calcf1mcc(pair_map_pred, pair_map_ground)
+        bpseq_str = tensor2bpseq(sequence, pred)
+        with open(out_bpseq, 'w') as f:
+            f.write(bpseq_str+'\n')
+        basename = os.path.basename(out_bpseq)
+        basename, _ = os.path.splitext(basename)
         writer.writerow([basename, loss, mcc, f1])
     fp.close()
 
     if not quiet:
        mean_loss = loss_tot / len(loader)
        print(f'Mean loss for test set: {mean_loss}')
+
+    return out_bpseqs

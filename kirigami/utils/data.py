@@ -4,7 +4,7 @@ import os
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset
-from kirigami.utils.utilities import *
+from kirigami.utils.convert import *
 
 
 __all__ = ['AbstractASCIIDataset',

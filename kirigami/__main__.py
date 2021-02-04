@@ -25,7 +25,7 @@ def main():
     parser_evaluate.add_argument('--in-list', required=True, type=Path, help='path to input list file of `.bpseqs`\'s')
     parser_evaluate.add_argument('--out-list', required=True, type=Path, help='path to output list file of `.bpseqs`\'s')
     parser_evaluate.add_argument('--out-directory', required=True, type=Path, help='path to output directory of `.fastas`\'s and `.bpseq`\'s')
-    parser.evaluate.add_argument('--out-csv', required=True, type=Path, help='path to .csv file for comparison metrics')
+    parser_evaluate.add_argument('--out-csv', required=True, type=Path, help='path to .csv file for comparison metrics')
     parser_evaluate.set_defaults(func=evaluate)
 
     args = parser.parse_args()

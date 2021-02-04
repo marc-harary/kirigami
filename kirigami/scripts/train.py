@@ -8,7 +8,7 @@ import torch
 from torch.optim import *
 from torch.nn import *
 from torch.utils.data import DataLoader
-from kirigami.utils.path import path2munch
+from kirigami.utils.convert import path2munch
 from kirigami.utils.data import BpseqDataset
 from kirigami.nn.MainNet import MainNet
 
@@ -17,13 +17,13 @@ __all__ = ['train']
 
 
 @dispatch(Namespace)
-def train(args: argparse.Namespace) -> None:
+def train(args: Namespace) -> None:
     config, quiet, resume = path2munch(args.config), args.quiet, args.resume
-    return train(config=config, quiet=quiet, resume=resume)
+    return train(config, quiet, resume)
 
 
 @dispatch(Munch, bool, bool)
-def train(config: Munch, quiet: bool = False, resume: bool = False)  -> None:
+def train(config: Munch, quiet: bool = False, resume: bool = False) -> None:
     '''Train deep network based on config files'''
     start_epoch = 0
     model = MainNet(config.model)

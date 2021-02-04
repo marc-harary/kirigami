@@ -1,6 +1,7 @@
 import os
 from argparse import Namespace
 from pathlib import Path
+from typing import List
 from multipledispatch import dispatch
 from munch import Munch
 from tqdm import tqdm
@@ -17,21 +18,21 @@ __all__ = ['predict']
 
 
 @dispatch(Namespace)
-def predict(args: Namespace) -> None:
+def predict(args: Namespace) -> List[Path]:
     config = path2munch(args.config)
     return predict(config=config,
-                   in_file=args.in_file,
-                   out_file=args.out_file,
+                   in_list=args.in_list,
+                   out_list=args.out_list,
                    out_dir=args.out_directory,
                    quiet=args.quiet)
 
 
-@dispatch(config: Munch, Path, Path, Path, bool)
+@dispatch(: Munch, Path, Path, Path, bool)
 def predict(config: Munch,
-            in_file: Path,
-            out_file: Path,
+            in_list: Path,
+            out_list: Path,
             out_dir: Path,
-            quiet: bool = False) -> None:
+            quiet: bool = False) -> List[Path]:
     '''Evaluates model from config file'''
     try:
         saved = torch.load(config.data.best)
@@ -46,18 +47,19 @@ def predict(config: Munch,
     model.load_state_dict(saved['model_state_dict'])
 
     out_bpseqs = []
-    fp = open(out_file, 'w')
-    with open(in_file, 'r') as f:
+    fp = open(out_list, 'w')
+    with open(in_list, 'r') as f:
         files = f.read().splitlines()
     for file in files:
         out_bpseq = os.path.basename(file)
         out_bpseq = os.path.join(out_dir, out_bpseq)
         out_bpseqs.append(out_bpseq)
-        fp.write(out_bpseqs+'\n')
+        fp.write(out_bpseq+'\n')
+    fp.close()
 
-    dataset = FastaDataset(in_file, quiet)
-    dataloader = DataLoader(dataset)
-    loop_zip = zip(out_bpseqs, dataloader)
+    data_set = FastaDataset(in_list, quiet)
+    loader = DataLoader(dataset)
+    loop_zip = zip(out_bpseqs, loader)
     loop = loop_zip if quiet else tqdm(loop_zip)
 
     for out_bpseq, sequence in loop:
@@ -66,3 +68,5 @@ def predict(config: Munch,
         bpseq_str = tensor2bpseq(sequence, pred)
         with open(out_bpseq, 'w') as f:
             f.write(bpseq_str+'\n')
+
+    return out_bpseqs

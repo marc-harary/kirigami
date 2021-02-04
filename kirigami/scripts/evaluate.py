@@ -46,28 +46,29 @@ def evaluate(config: Munch,
     model.load_state_dict(saved['model_state_dict'])
     model.eval()
 
-    if not (out_bpseqs := os.listdir(out_dir)):
-        out_bpseqs = predict(config=config,
-                             in_list=in_list,
-                             out_list=out_list,
-                             out_dir=out_dir,
-                             quiet=quiet)
+    with open(in_list, 'r') as f:
+        in_bpseqs = f.read().splitlines()
+    out_bpseqs = []
+    for in_bpseq in in_bpseqs:
+        out_bpseq = os.path.basename(in_bpseq)
+        out_bpseq = os.path.join(out_dir, out_bpseq)
+        out_bpseqs.append(out_bpseq)
 
-    bpseq_dataset = BpseqDataset(in_file, quiet)
-    loader = DataLoader(bpseq_dataset)
+    dataset = BpseqDataset(in_list, quiet)
+    loader = DataLoader(dataset)
     loop_zip = zip(out_bpseqs, loader)
-    loop = loop_zip if args.quiet else tqdm(loop_zip)
+    loop = loop_zip if quiet else tqdm(loop_zip)
 
     loss_tot = 0.
     fp = open(out_file, 'w')
     writer = csv.writer(fp)
     writer.writerow(['basename', 'loss', 'mcc', 'f1'])
-    for out_bpseq, (sequence, label) in loop:
+    for out_bpseq, (sequence, ground) in loop:
         pred = model(sequence)
-        loss = loss_func(pred, label)
+        loss = loss_func(pred, ground)
         loss_tot += loss
         pred = binarize(pred)
-        pair_map_pred, pair_map_ground = tensor2pairmap(pred), tensor2pairmap(label)
+        pair_map_pred, pair_map_ground = tensor2pairmap(pred), tensor2pairmap(ground)
         mcc, f1 = calcMCCF1(pair_map_pred, pair_map_ground)
         writer.writerow([basename, loss, mcc, f1])
     fp.close()

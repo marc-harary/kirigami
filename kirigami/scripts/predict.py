@@ -31,7 +31,7 @@ def predict(config: Munch,
             in_file: Path,
             out_file: Path,
             out_dir: Path,
-            quiet: bool = False)
+            quiet: bool = False) -> None:
     '''Evaluates model from config file'''
     try:
         saved = torch.load(config.data.best)
@@ -44,21 +44,25 @@ def predict(config: Munch,
 
     model = MainNet(config.model)
     model.load_state_dict(saved['model_state_dict'])
-    model.eval()
 
-    out_files = new_ext(in_file=in_file,
-                        out_file=out_file,
-                        out_dir=out_dir,
-                        ext='.bpseq')
+    out_bpseqs = []
+    fp = open(out_file, 'w')
+    with open(in_file, 'r') as f:
+        files = f.read().splitlines()
+    for file in files:
+        out_bpseq = os.path.basename(file)
+        out_bpseq = os.path.join(out_dir, out_bpseq)
+        out_bpseqs.append(out_bpseq)
+        fp.write(out_bpseqs+'\n')
 
     dataset = FastaDataset(in_file, quiet)
-    dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
-    loop_zip = zip(out_files, dataloader)
+    dataloader = DataLoader(dataset)
+    loop_zip = zip(out_bpseqs, dataloader)
     loop = loop_zip if quiet else tqdm(loop_zip)
 
-    for out_file, sequence in loop:
+    for out_bpseq, sequence in loop:
         pred = model(sequence)
         pred = binarize(pred)
         bpseq_str = tensor2bpseq(sequence, pred)
-        with open(out_file, 'w') as f:
-            f.write(bpseq_str)
+        with open(out_bpseq, 'w') as f:
+            f.write(bpseq_str+'\n')

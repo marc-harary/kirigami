@@ -27,7 +27,7 @@ def evaluate(args: Namespace) -> None:
                     quiet=args.quiet)
 
 
-@dispatch(Munch, Path, bool)
+@dispatch(Munch, Path, Path, Path, Path, bool)
 def evaluate(config: Munch,
              in_list: Path,
              out_list: Path,
@@ -46,10 +46,13 @@ def evaluate(config: Munch,
     model.load_state_dict(saved['model_state_dict'])
     model.eval()
 
-    out_bpseqs = new_ext(in_file=in_file,
-                         out_file=out_list,
-                         out_dir=out_dir,
-                         ext='.bpseq')
+    if not (out_bpseqs := os.listdir(out_dir)):
+        out_bpseqs = predict(config=config,
+                             in_list=in_list,
+                             out_list=out_list,
+                             out_dir=out_dir,
+                             quiet=quiet)
+
     bpseq_dataset = BpseqDataset(in_file, quiet)
     loader = DataLoader(bpseq_dataset)
     loop_zip = zip(out_bpseqs, loader)

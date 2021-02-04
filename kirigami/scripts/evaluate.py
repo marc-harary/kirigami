@@ -61,7 +61,6 @@ def evaluate(config: Munch,
     writer = csv.writer(fp)
     writer.writerow(['basename', 'loss', 'mcc', 'f1'])
     for out_bpseq, (sequence, ground) in loop:
-        import pdb; pdb.set_trace()
         pred = model(sequence)
         loss = float(loss_func(pred, ground))
         loss_tot += loss

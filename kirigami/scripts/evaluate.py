@@ -50,6 +50,8 @@ def evaluate(config: Munch,
         out_bpseq = os.path.join(out_dir, out_bpseq)
         out_bpseqs.append(out_bpseq)
 
+    os.path.exists(out_dir) or os.mkdir(out_dir)
+
     dataset = BpseqDataset(in_list, quiet)
     loader = DataLoader(dataset)
     loop_zip = zip(out_bpseqs, loader)

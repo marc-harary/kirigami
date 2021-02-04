@@ -19,7 +19,8 @@ class AbstractASCIIDataset(Dataset):
         with open(list_file, 'r') as f:
             files = f.read().splitlines()
         self.data = []
-        print('Embedding files...')
+        if not quiet:
+            print('Embedding files...')
         loop = files if quiet else tqdm(files)
         for file in loop:
             with open(file, 'r') as f:

@@ -1,5 +1,6 @@
 '''script to train config file'''
 
+
 import os
 from argparse import Namespace
 

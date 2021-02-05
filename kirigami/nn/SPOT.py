@@ -1,5 +1,6 @@
 '''implements sub-modules from Singh et al. (2020)'''
 
+
 import torch
 from torch import nn
 from kirigami.nn.ResNet import ActDropNorm

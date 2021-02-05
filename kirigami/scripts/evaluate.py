@@ -1,5 +1,6 @@
 '''Evaluates model on list of input files'''
 
+
 import os
 from pathlib import Path
 from argparse import Namespace

@@ -1,5 +1,6 @@
 '''predict `FASTA` files based on input config file'''
 
+
 import os
 from argparse import Namespace
 from pathlib import Path

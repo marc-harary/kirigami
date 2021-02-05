@@ -1,10 +1,13 @@
+'''
+utils for converting and embedding various data types
+'''
+
 import json
-import os
+import re
 from pathlib import Path
-from typing import List, Tuple, Dict
+from typing import Tuple
 from collections import defaultdict
 from operator import itemgetter
-from copy import deepcopy
 from itertools import permutations
 import torch
 import munch
@@ -43,7 +46,7 @@ def pairmap2tensor(pairs: PairMap, out_dim: int = 3) -> torch.Tensor:
             continue
         out[i,j] = 1.
     while out_dim > out.dim():
-       out.unsqueeze_(0)
+        out.unsqueeze_(0)
     return out
 
 
@@ -105,9 +108,9 @@ def pairmap2bpseq(sequence: str, pair_map: PairMap) -> str:
     return ''.join(out_list)
 
 
-def binarize(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> torch.Tensor:
+def binarize(ipt: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> torch.Tensor:
     '''Binarizes contact matrix from deep network'''
-    mat = input.squeeze()
+    mat = ipt.squeeze()
     length = mat.shape[0]
     assert mat.dim() == 2 and length == mat.shape[1], "Input tensor must be square"
     idxs = list(permutations(range(length), 2))
@@ -124,9 +127,9 @@ def binarize(input: torch.Tensor, thres: float = .5, diagonal: float = 0.) -> to
     return out
 
 
-def tensor2pairmap(input: torch.Tensor) -> PairMap:
+def tensor2pairmap(ipt: torch.Tensor) -> PairMap:
     '''Converts binarized contact matrix to `PairMap`'''
-    mat = input.squeeze()
+    mat = ipt.squeeze()
     assert mat.dim() == 2
     values, js = torch.max(mat, 1)
     js[values == 0.] = NO_CONTACT
@@ -134,9 +137,9 @@ def tensor2pairmap(input: torch.Tensor) -> PairMap:
     return pair_map
 
 
-def tensor2sequence(input: torch.Tensor) -> str:
+def tensor2sequence(ipt: torch.Tensor) -> str:
     '''Converts embedded `FASTA` sequence to string'''
-    chars_embed = input.squeeze()
+    chars_embed = ipt.squeeze()
     chars_embed = chars_embed[:N_BASES, :, 0].T
     chars = []
     for row in chars_embed:

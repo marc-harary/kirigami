@@ -1,3 +1,7 @@
+'''
+predict `FASTA` files based on input config file
+'''
+
 import os
 from argparse import Namespace
 from pathlib import Path
@@ -6,10 +10,9 @@ from multipledispatch import dispatch
 from munch import Munch
 from tqdm import tqdm
 import torch
-from torch import nn
 from torch.utils.data import DataLoader
 from kirigami.utils.data import FastaDataset
-from kirigami.utils.convert import binarize, tensor2bpseq
+from kirigami.utils.convert import binarize, tensor2bpseq, path2munch
 from kirigami.nn.MainNet import MainNet
 
 
@@ -18,6 +21,7 @@ __all__ = ['predict']
 
 @dispatch(Namespace)
 def predict(args: Namespace) -> List[Path]:
+    '''Evaluates model from config file'''
     config = path2munch(args.config)
     return predict(config, args.in_list, args.out_list, args.out_directory, args.quiet)
 
@@ -31,7 +35,7 @@ def predict(config: Munch,
     '''Evaluates model from config file'''
     try:
         saved = torch.load(config.data.best)
-    except:
+    except FileNotFoundError:
         saved = torch.load(config.data.checkpoint)
     else:
         raise FileNotFoundError('Can\'t find checkpoint files')

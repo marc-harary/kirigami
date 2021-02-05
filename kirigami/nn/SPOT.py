@@ -1,3 +1,7 @@
+'''
+implements sub-modules from Singh et al. (2020)
+'''
+
 import torch
 from torch import nn
 from kirigami.nn.ResNet import ActDropNorm
@@ -15,7 +19,7 @@ class BlockA(nn.Module):
                  kernel_size1=3,
                  kernel_size2=5,
                  resnet=True):
-        super(BlockA, self).__init__()
+        super().__init__()
         self.resnet = resnet
         self.conv1 = nn.Conv2d(in_channels=n_channels,
                                out_channels=n_channels,
@@ -29,14 +33,14 @@ class BlockA(nn.Module):
                                          p=p,
                                          activation=activation)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        out = input
+    def forward(self, ipt: torch.Tensor) -> torch.Tensor:
+        out = ipt
         out = self.act_drop_norm(out)
         out = self.conv1(out)
         out = self.act_drop_norm(out)
         out = self.conv2(out)
         if self.resnet:
-            out += input
+            out += ipt
         return out
 
 
@@ -47,14 +51,14 @@ class BlockB(nn.Module):
                  activation='ReLU',
                  in_features=8,
                  out_features=8):
-        super(BlockB, self).__init__()
+        super().__init__()
         self.lin = nn.Linear(in_features=in_features, out_features=out_features)
         self.act_drop_norm = ActDropNorm(num_channels=out_features,
                                          p=p,
                                          activation=activation)
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        out = input
+    def forward(self, ipt: torch.Tensor) -> torch.Tensor:
+        out = ipt
         out = self.lin(out)
         out = self.act_drop_norm(out)
         return out

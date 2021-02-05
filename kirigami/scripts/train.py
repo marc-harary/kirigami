@@ -1,12 +1,13 @@
+'''
+script to train config file
+'''
+
 import os
-import json
 from argparse import Namespace
 from multipledispatch import dispatch
 from munch import Munch
 from tqdm import tqdm
 import torch
-from torch.optim import *
-from torch.nn import *
 from torch.utils.data import DataLoader
 from kirigami.utils.convert import path2munch
 from kirigami.utils.data import BpseqDataset
@@ -18,6 +19,7 @@ __all__ = ['train']
 
 @dispatch(Namespace)
 def train(args: Namespace) -> None:
+    '''Train deep network based on config files'''
     config, quiet, resume = path2munch(args.config), args.quiet, args.resume
     return train(config, quiet, resume)
 

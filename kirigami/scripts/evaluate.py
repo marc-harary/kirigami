@@ -25,13 +25,14 @@ __all__ = ['evaluate']
 def evaluate(args: Namespace) -> List[Path]:
     '''Evaluates model from config file'''
     config = path2munch(args.config)
-    return evaluate(config, args.in_list, args.out_directory, args.quiet)
+    return evaluate(config, args.in_list, args.out_directory, args.thres, args.quiet)
 
 
-@dispatch(Munch, Path, Path, bool)
+@dispatch(Munch, Path, Path, float, bool)
 def evaluate(config: Munch,
              in_list: Path,
              out_dir: Path,
+             thres: float,
              quiet: bool = False) -> List[Path]:
     '''Evaluates model from config file'''
     try:
@@ -64,27 +65,34 @@ def evaluate(config: Munch,
     loop = loop_zip if quiet else tqdm(loop_zip)
     loss_func = eval(config.loss_func.class_name)(**config.loss_func.params)
 
-    loss_tot = 0.
     fp = open(out_csv, 'w')
     writer = csv.writer(fp)
     writer.writerow(['basename', 'loss', 'mcc', 'f1'])
+    loss_tot, f1_tot, mcc_tot = 0., 0., 0.
     for out_bpseq, (sequence, ground) in loop:
         pred = model(sequence)
         loss = float(loss_func(pred, ground))
-        loss_tot += loss
-        pred = binarize(pred)
+        pred = binarize(pred, thres=thres)
         pair_map_pred, pair_map_ground = tensor2pairmap(pred), tensor2pairmap(ground)
+        basename = os.path.basename(out_bpseq)
+        basename, _ = os.path.splitext(basename)
         f1, mcc = calcf1mcc(pair_map_pred, pair_map_ground)
+        f1_tot += f1
+        mcc_tot += mcc
+        loss_tot += loss
+        writer.writerow([basename, loss, mcc, f1])
         bpseq_str = tensor2bpseq(sequence, pred)
         with open(out_bpseq, 'w') as f:
             f.write(bpseq_str+'\n')
-        basename = os.path.basename(out_bpseq)
-        basename, _ = os.path.splitext(basename)
-        writer.writerow([basename, loss, mcc, f1])
     fp.close()
 
     if not quiet:
-        mean_loss = loss_tot / len(loader)
+        length = len(loader)
+        mean_loss = loss_tot / length
+        mean_f1 = f1_tot / length
+        mean_mcc = mcc_tot / length
         print(f'Mean loss for test set: {mean_loss}')
+        print(f'Mean F1 score for test set: {mean_f1}')
+        print(f'Mean MCC score for test set: {mean_mcc}')
 
     return out_bpseqs

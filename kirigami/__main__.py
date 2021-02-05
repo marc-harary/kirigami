@@ -29,6 +29,8 @@ def main():
                                  help='path to input list file of `.bpseqs`\'s')
     parser_evaluate.add_argument('--out-directory', required=True, type=Path,
                                  help='path to output directory of `.fastas`\'s and `.bpseq`\'s')
+    parser_evaluate.add_argument('--thres', required=True, type=float, default=.5,
+                                 help='threshhold for binarizing output file')
     parser_evaluate.set_defaults(func=evaluate)
 
     args = parser.parse_args()

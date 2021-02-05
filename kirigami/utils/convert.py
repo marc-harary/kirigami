@@ -134,7 +134,8 @@ def tensor2pairmap(ipt: torch.Tensor) -> PairMap:
     assert mat.dim() == 2
     values, js = torch.max(mat, 1)
     js[values == 0.] = NO_CONTACT
-    pair_map = dict(enumerate(js))
+    js_ints = map(int, js)
+    pair_map = dict(enumerate(js_ints))
     return pair_map
 
 
@@ -156,21 +157,21 @@ def tensor2bpseq(sequence: torch.Tensor, label: torch.Tensor) -> str:
     return pairmap2bpseq(sequence_str, label_pair_map)
 
 
-def calcf1mcc(positive_list: PairMap, predict_list: PairMap) -> Tuple[float,float]:
+def calcf1mcc(pred_map: PairMap, ground_map: PairMap) -> Tuple[float,float]:
     '''Returns f1 score and mcc of sequence and predicted contact points'''
-    length = len(positive_list)
-    assert length == len(predict_list)
+    length = len(pred_map)
+    assert length == len(ground_map)
     total = length * (length-1) / 2
-    predicted = set(predict_list)
-    positive = set(positive_list)
-    tp = 1. * len(predicted.intersection(positive))
-    fp = len(predicted) - tp
-    fn = len(positive) - tp
+    pred_set = {pair for pair in pred_map.items() if pair[1] >= pair[0]}
+    ground_set = {pair for pair in ground_map.items() if pair[1] >= pair[0]}
+    tp = 1. * len(pred_set.intersection(ground_set))
+    fp = len(pred_set) - tp
+    fn = len(ground_set) - tp
     tn = total - tp - fp - fn
-    if len(predicted) == 0 or len(positive) == 0:
+    if len(pred_set) == 0 or len(ground_set) == 0:
         return 0, 0
-    precision = tp / len(predicted)
-    recall = tp / len(positive)
+    precision = tp / len(pred_set)
+    recall = tp / len(ground_set)
     f1 = 0
     mcc = 0
     if tp > 0:

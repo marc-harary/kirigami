@@ -14,7 +14,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from kirigami.utils.data import BpseqDataset
-from kirigami.utils.convert import path2munch, binarize, tensor2pairmap, calcf1mcc, tensor2bpseq
+from kirigami.utils.convert import path2munch, binarize, tensor2pairmap, get_scores, tensor2bpseq
 from kirigami.nn.MainNet import MainNet
 
 
@@ -67,7 +67,7 @@ def evaluate(config: Munch,
 
     fp = open(out_csv, 'w')
     writer = csv.writer(fp)
-    writer.writerow(['basename', 'loss', 'mcc', 'f1'])
+    writer.writerow(['basename','loss','tp','fp','tn','fn','ground_pairs','pred_pairs','mcc','f1'])
     loss_tot, f1_tot, mcc_tot = 0., 0., 0.
     for out_bpseq, (sequence, ground) in loop:
         pred = model(sequence)
@@ -76,11 +76,11 @@ def evaluate(config: Munch,
         pair_map_pred, pair_map_ground = tensor2pairmap(pred), tensor2pairmap(ground)
         basename = os.path.basename(out_bpseq)
         basename, _ = os.path.splitext(basename)
-        f1, mcc = calcf1mcc(pair_map_pred, pair_map_ground)
-        f1_tot += f1
-        mcc_tot += mcc
+        out_dict = get_scores(pair_map_pred, pair_map_ground)
+        f1_tot += out_dict['f1']
+        mcc_tot += out_dict['mcc']
         loss_tot += loss
-        writer.writerow([basename, loss, mcc, f1])
+        writer.writerow([basename, loss] + out_dict.values())
         bpseq_str = tensor2bpseq(sequence, pred)
         with open(out_bpseq, 'w') as f:
             f.write(bpseq_str+'\n')

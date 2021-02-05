@@ -3,6 +3,7 @@
 
 import os
 from argparse import Namespace
+import time
 
 from multipledispatch import dispatch
 from munch import Munch
@@ -38,33 +39,34 @@ def train(config: Munch, quiet: bool = False, resume: bool = False) -> None:
     train_loader = DataLoader(train_set,
                               batch_size=config.training.batch_size,
                               shuffle=config.training.shuffle)
-    train_loop = train_loader if quiet else tqdm(train_loader)
 
     if config.data.validation_list:
         val_set = BpseqDataset(config.data.validation_list, quiet)
         val_loader = DataLoader(val_set,
                                 batch_size=config.data.batch_size,
                                 shuffle=config.data.shuffle)
-        val_loop = val_loader if quiet else tqdm(val_loader)
 
     if resume:
-        assert os.path.exists(config.data.best), "Cannot find checkpoint file"
-        best = torch.load(config.data.best)
-        model.load_state_dict(best['model_state_dict'])
-        optimizer.load_state_dict(best['optimizer_state_dict'])
-        start_epoch = best['epoch']
-        loss = best['loss']
-        best_val_loss = best['best_val_loss']
+        assert os.path.exists(config.data.checkpoint), "Cannot find checkpoint file"
+        checkpoint = torch.load(config.data.checkpoint)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        start_epoch = checkpoint['epoch']
+        loss = checkpoint['loss']
 
-    for epoch in range(start_epoch, config.training.epochs):
+    range_iterator = range(start_epoch, config.training.epochs)
+    loop = range_iterator if quiet else tqdm(range_iterator)
+    
+    for epoch in loop:
+        start = time.time()
         train_loss_tot = 0.
-        for seq, lab in train_loop:
+        for seq, lab in train_loader:
             pred = model(seq)
             loss = loss_func(pred, lab)
             train_loss_tot += loss
             loss.backward()
-            optimizer.step()
             optimizer.zero_grad()
+            optimizer.step()
         train_loss_mean = train_loss_tot / len(train_loader)
         torch.save({'epoch': epoch,
                     'model_state_dict': model.state_dict(),
@@ -74,7 +76,7 @@ def train(config: Munch, quiet: bool = False, resume: bool = False) -> None:
 
         if config.data.validation_list:
             val_loss_tot = 0.
-            for seq, lab in val_loop:
+            for seq, lab in val_loader:
                 pred = model(seq)
                 loss = loss_func(pred, lab)
                 val_loss_tot += loss
@@ -88,6 +90,7 @@ def train(config: Munch, quiet: bool = False, resume: bool = False) -> None:
                            config.data.best)
 
         if epoch % config.training.print_frequency == 0:
+            print(f'Time for epoch {epoch}: {time.time() - start:.4} s')
             print(f'Mean training loss for epoch {epoch}: {train_loss_mean}')
             if config.data.validation_list:
                 print(f'Mean validation loss for epoch {epoch}: {val_loss_mean}')

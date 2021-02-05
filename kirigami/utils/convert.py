@@ -26,7 +26,7 @@ __all__ = ['path2munch',
            'bpseq2pairmap',
            'pairmap2bpseq',
            'binarize',
-           'calcf1mcc']
+           'get_scores']
 
 
 def path2munch(path: Path) -> munch.Munch:
@@ -157,25 +157,25 @@ def tensor2bpseq(sequence: torch.Tensor, label: torch.Tensor) -> str:
     return pairmap2bpseq(sequence_str, label_pair_map)
 
 
-def calcf1mcc(pred_map: PairMap, ground_map: PairMap) -> Tuple[float,float]:
-    '''Returns f1 score and mcc of sequence and predicted contact points'''
+def get_scores(pred_map: PairMap, ground_map: PairMap) -> Dict[str,float]:
+    '''Returns various evaluative scores of predicted secondary structure'''
     length = len(pred_map)
     assert length == len(ground_map)
     total = length * (length-1) / 2
     pred_set = {pair for pair in pred_map.items() if pair[1] >= pair[0]}
     ground_set = {pair for pair in ground_map.items() if pair[1] >= pair[0]}
+    pred_pairs, ground_pairs = len(pred_set), len(ground_set)
     tp = 1. * len(pred_set.intersection(ground_set))
     fp = len(pred_set) - tp
     fn = len(ground_set) - tp
     tn = total - tp - fp - fn
-    if len(pred_set) == 0 or len(ground_set) == 0:
-        return 0, 0
-    precision = tp / len(pred_set)
-    recall = tp / len(ground_set)
-    f1 = 0
-    mcc = 0
-    if tp > 0:
-        f1 = 2 / (1/precision + 1/recall)
-    if (tp+fp) * (tp+fn) * (tn+fp) * (tn+fn) > 0:
-        mcc = (tp*tn-fp*fn) / ((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))**.5
-    return f1, mcc
+    out = dict(tp=tp, fp=fp, fn=fn, tn=tn, pred_pairs=pred_pairs, ground_pairs=ground_pairs)
+    out['mcc'] = out['f1'] = 0
+    if len(pred_set) != 0 and len(ground_set) != 0:
+        precision = tp / len(pred_set)
+        recall = tp / len(ground_set)
+        if tp > 0:
+            out['f1'] = 2 / (1/precision + 1/recall)
+        if (tp+fp) * (tp+fn) * (tn+fp) * (tn+fn) > 0:
+            out['mcc'] = (tp*tn-fp*fn) / ((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))**.5
+    return out

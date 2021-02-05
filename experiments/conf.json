@@ -13,24 +13,13 @@
         "print_frequency": 10
     },
 
-    "loss_func": {
-        "class_name": "MSELoss",
-        "params": {}
-    },
+    "loss_func": "torch.nn.BSELoss()",
 
-    "optim": {
-        "class_name": "Adam",
-        "params": {"lr": 1e-3}
-    },
+    "optim": "torch.optim.Adam(model.parameters(), lr=1e-2)",
 
     "model": [
-        {
-            "class_name": "kirigami.nn.SPOT.BlockA",
-            "kwargs": {"p": 0.4}
-        },
-        {
-            "class_name": "torch.nn.Sigmoid",
-            "kwargs": {}        
-        }
+        "kirigami.nn.SPOT.BlockA(p=0.4)",
+        "torch.nn.Conv2d(in_channels=8, out_channels=1, kernel_size=1)",
+        "torch.nn.Sigmoid()"
     ]
 }

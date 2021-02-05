@@ -1,6 +1,4 @@
-'''
-utils for converting and embedding various data types
-'''
+'''utils for converting and embedding various data types'''
 
 import json
 import re
@@ -9,8 +7,10 @@ from typing import Tuple
 from collections import defaultdict
 from operator import itemgetter
 from itertools import permutations
+
 import torch
 import munch
+
 from kirigami._globals import *
 
 

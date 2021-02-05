@@ -1,12 +1,12 @@
-'''
-dataset classes for various input files
-'''
+'''dataset classes for various input files'''
 
 from pathlib import Path
 from typing import Callable, Tuple
+
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset
+
 from kirigami.utils.convert import sequence2tensor, label2tensor, bpseq2tensor
 
 

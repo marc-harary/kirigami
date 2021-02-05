@@ -18,7 +18,7 @@ class MainNet(nn.Module):
 
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
         out = ipt
-        for i in range(self.n_layers):
+        for i in range(self.n_layers+1):
             layer = getattr(self, f'layer{i}')
             if isinstance(layer, nn.LSTM):
                 out = torch.transpose(out, 1, 2)

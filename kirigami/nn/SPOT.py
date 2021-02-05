@@ -6,7 +6,7 @@ from torch import nn
 from kirigami.nn.ResNet import ActDropNorm
 
 
-__all__ = ['ActDropNorm', 'BlockA', 'BlockB']
+__all__ = ['BlockA', 'BlockB']
 
 
 class BlockA(nn.Module):

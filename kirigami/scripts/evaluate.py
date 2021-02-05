@@ -47,7 +47,7 @@ def evaluate(config: Munch,
 
     os.path.exists(out_dir) or os.mkdir(out_dir)
     bpseq_dir = os.path.join(out_dir, 'bpseqs')
-    os.mkdir(bpseq_dir)
+    os.path.exists(bpseq_dir) or os.mkdir(bpseq_dir)
     out_csv = os.path.join(out_dir, 'scores.csv')
 
     with open(in_list, 'r') as f:

@@ -1,6 +1,4 @@
-'''
-implements sub-moduels for resnet
-'''
+'''implements sub-moduels for resnet'''
 
 import torch
 from torch import nn

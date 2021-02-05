@@ -1,16 +1,16 @@
-'''
-predict `FASTA` files based on input config file
-'''
+'''predict `FASTA` files based on input config file'''
 
 import os
 from argparse import Namespace
 from pathlib import Path
 from typing import List
+
 from multipledispatch import dispatch
 from munch import Munch
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
+
 from kirigami.utils.data import FastaDataset
 from kirigami.utils.convert import binarize, tensor2bpseq, path2munch
 from kirigami.nn.MainNet import MainNet

@@ -1,17 +1,17 @@
-'''
-Evaluates model on list of input files
-'''
+'''Evaluates model on list of input files'''
 
 import os
 from pathlib import Path
 from argparse import Namespace
 from typing import List
 import csv
+
 from munch import Munch
 from multipledispatch import dispatch
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
+
 from kirigami.utils.data import BpseqDataset
 from kirigami.utils.convert import path2munch, binarize, tensor2pairmap, calcf1mcc, tensor2bpseq
 from kirigami.nn.MainNet import MainNet

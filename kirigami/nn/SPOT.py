@@ -1,6 +1,4 @@
-'''
-implements sub-modules from Singh et al. (2020)
-'''
+'''implements sub-modules from Singh et al. (2020)'''
 
 import torch
 from torch import nn

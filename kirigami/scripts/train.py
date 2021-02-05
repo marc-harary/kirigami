@@ -1,14 +1,14 @@
-'''
-script to train config file
-'''
+'''script to train config file'''
 
 import os
 from argparse import Namespace
+
 from multipledispatch import dispatch
 from munch import Munch
 from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
+
 from kirigami.utils.convert import path2munch
 from kirigami.utils.data import BpseqDataset
 from kirigami.nn.MainNet import MainNet

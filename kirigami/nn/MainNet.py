@@ -1,6 +1,4 @@
-'''
-loads and builds main model for training
-'''
+'''loads and builds main model for training'''
 
 from typing import List
 import torch

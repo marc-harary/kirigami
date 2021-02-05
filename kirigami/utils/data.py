@@ -2,11 +2,9 @@
 
 from pathlib import Path
 from typing import Callable, Tuple
-
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset
-
 from kirigami.utils.convert import sequence2tensor, label2tensor, bpseq2tensor
 
 
@@ -17,7 +15,7 @@ __all__ = ['AbstractASCIIDataset',
 
 
 class AbstractASCIIDataset(Dataset):
-    ''' abstract class for all ASCII-encoding datasets '''
+    '''abstract class for all ASCII-encoding datasets'''
     def __init__(self, list_file: Path, embedding: Callable, quiet: bool = False) -> None:
         super().__init__()
         with open(list_file, 'r') as f:
@@ -39,17 +37,18 @@ class AbstractASCIIDataset(Dataset):
 
 
 class FastaDataset(AbstractASCIIDataset):
-    ''' loads and embed `FASTA` files '''
+    '''loads and embeds `FASTA` files'''
     def __init__(self, list_file: Path, quiet: bool = False) -> None:
         super(FastaDataset, self).__init__(list_file, sequence2tensor, quiet)
 
 
 class LabelDataset(AbstractASCIIDataset):
-    ''' loads and embed `label` files '''
+    '''loads and embeds `label` files'''
     def __init__(self, list_file: Path, quiet: bool = False) -> None:
         super().__init__(list_file, label2tensor, quiet)
 
 
 class BpseqDataset(AbstractASCIIDataset):
+    '''loads and embeds `bpseq` files'''
     def __init__(self, list_file: Path, quiet: bool = False) -> None:
         super().__init__(list_file, bpseq2tensor, quiet)

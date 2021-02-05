@@ -9,13 +9,11 @@ __all__ = ['MainNet']
 
 class MainNet(nn.Module):
     '''Constructs deep net from list of dictionaries'''
-    def __init__(self, dict_list: List[dict]):
+    def __init__(self, layers: List[str]):
         super().__init__()
         i = 0
-        for layer_dict in dict_list:
-            obj_ptr = eval(layer_dict['class_name'])(**layer_dict['kwargs'])
-            setattr(self, f'layer{i}', obj_ptr)
-            i += 1
+        for i, layer in enumerate(layers):
+            setattr(self, f'layer{i}', eval(layer))
         self.n_layers = i
 
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:

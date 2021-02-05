@@ -63,7 +63,7 @@ def evaluate(config: Munch,
     loader = DataLoader(dataset)
     loop_zip = zip(out_bpseqs, loader)
     loop = loop_zip if quiet else tqdm(loop_zip)
-    loss_func = eval(config.loss_func.class_name)(**config.loss_func.params)
+    loss_func = eval(config.loss_func)
 
     fp = open(out_csv, 'w')
     writer = csv.writer(fp)

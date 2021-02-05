@@ -30,8 +30,8 @@ def train(config: Munch, quiet: bool = False, resume: bool = False) -> None:
     '''Train deep network based on config files'''
     start_epoch = 0
     model = MainNet(config.model)
-    loss_func = eval(config.loss_func.class_name)(**config.loss_func.params)
-    optimizer = eval(config.optim.class_name)(model.parameters(), **config.optim.params)
+    loss_func = eval(config.loss_func)
+    optimizer = eval(config.optim)
 
     best_val_loss = float('inf')
     train_set = BpseqDataset(config.data.training_list, quiet)

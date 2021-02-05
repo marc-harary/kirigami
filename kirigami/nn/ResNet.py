@@ -5,7 +5,7 @@ from torch.nn import *
 
 __all__ = ['ActDropNorm']
 
-class ActDropNorm(nn.Module):
+class ActDropNorm(torch.nn.Module):
     '''Performs activation, dropout, and batch normalization for resnet blocks'''
     def __init__(self, p: float, activation='ReLU', num_channels=8):
         super().__init__()

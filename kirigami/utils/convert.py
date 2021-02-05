@@ -149,6 +149,7 @@ def tensor2sequence(ipt: torch.Tensor) -> str:
 
 
 def tensor2bpseq(sequence: torch.Tensor, label: torch.Tensor) -> str:
+    '''Converts sequence and label tensors to `bpseq`-like string'''
     sequence_str = tensor2sequence(sequence)
     label_pair_map = tensor2pairmap(label)
     return pairmap2bpseq(sequence_str, label_pair_map)

@@ -37,9 +37,8 @@ def train(config: Munch,
     start_epoch = 0
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    model = MainNet(config.model)
+    model = torch.nn.DataParallel(MainNet(config.model))
     model.to(device)
-    model = torch.nn.DataParallel(model)
     model.train()
 
     best_val_loss = float('inf')

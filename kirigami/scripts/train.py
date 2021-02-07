@@ -36,6 +36,7 @@ def train(config: Munch,
 
     model = MainNet(config.model)
     model.to(device)
+    model = torch.nn.DataParallel(model)
     model.train()
     loss_func = eval(config.loss_func)
     optimizer = eval(config.optim)

@@ -45,6 +45,7 @@ def evaluate(config: Munch,
     model = MainNet(config.model)
     model.load_state_dict(saved['model_state_dict'])
     model.to(device)
+    model = torch.nn.DataParallel(model)
     model.eval()
 
     os.path.exists(out_dir) or os.mkdir(out_dir)

@@ -2,6 +2,7 @@ from pathlib import Path
 import argparse
 from kirigami.scripts import *
 
+
 def main():
     parser = argparse.ArgumentParser(prog='kirigami')
     parser.add_argument('--quiet', '-q', type=bool, help='quiet', default=False)
@@ -36,6 +37,7 @@ def main():
 
     args = parser.parse_args()
     args.func(args)
+
 
 if __name__ == '__main__':
     main()

@@ -25,24 +25,24 @@ __all__ = ['evaluate']
 def evaluate(args: Namespace) -> List[Path]:
     '''Evaluates model from config file'''
     config = path2munch(args.config)
-    return evaluate(config, args.in_list, args.out_directory, args.thres, args.quiet)
+    return evaluate(config, args.in_list, args.out_directory, args.thres, args.quiet, args.disable_gpu)
 
 
-@dispatch(Munch, Path, Path, float, bool)
+@dispatch(Munch, Path, Path, float, bool, bool)
 def evaluate(config: Munch,
              in_list: Path,
              out_dir: Path,
              thres: float,
-             quiet: bool = False) -> List[Path]:
+             quiet: bool = False,
+             disable_gpu: bool = False) -> List[Path]:
     '''Evaluates model from config file'''
     try:
-        saved = torch.load(config.data.best)
+        saved = torch.load(config.training.best)
     except FileNotFoundError:
-        saved = torch.load(config.data.checkpoint)
-    else:
-        raise FileNotFoundError('Can\'t find checkpoint files')
+        saved = torch.load(config.training.checkpoint)
 
-    model = MainNet(config.model)
+    device = torch.device('cuda:0' if torch.cuda.is_available() and disable_gpu else 'cpu')
+    model = MainNet(config.model).to(device)
     model.load_state_dict(saved['model_state_dict'])
     model.eval()
 
@@ -59,7 +59,7 @@ def evaluate(config: Munch,
         out_bpseq = os.path.join(bpseq_dir, out_bpseq)
         out_bpseqs.append(out_bpseq)
 
-    dataset = BpseqDataset(in_list, quiet)
+    dataset = BpseqDataset(in_list, quiet, device)
     loader = DataLoader(dataset)
     loop_zip = zip(out_bpseqs, loader)
     loop = loop_zip if quiet else tqdm(loop_zip)
@@ -67,7 +67,7 @@ def evaluate(config: Munch,
 
     fp = open(out_csv, 'w')
     writer = csv.writer(fp)
-    writer.writerow(['basename','loss','tp','fp','tn','fn','ground_pairs','pred_pairs','mcc','f1'])
+    writer.writerow(['basename','loss','tp','fp','tn','fn','mcc','f1','ground_pairs','pred_pairs'])
     loss_tot, f1_tot, mcc_tot = 0., 0., 0.
     for out_bpseq, (sequence, ground) in loop:
         pred = model(sequence)
@@ -76,11 +76,11 @@ def evaluate(config: Munch,
         pair_map_pred, pair_map_ground = tensor2pairmap(pred), tensor2pairmap(ground)
         basename = os.path.basename(out_bpseq)
         basename, _ = os.path.splitext(basename)
-        out_dict = get_scores(pair_map_pred, pair_map_ground)
-        f1_tot += out_dict['f1']
-        mcc_tot += out_dict['mcc']
+        out = get_scores(pair_map_pred, pair_map_ground)
+        f1_tot += out.f1
+        mcc_tot += out.mcc
         loss_tot += loss
-        writer.writerow([basename, loss] + out_dict.values())
+        writer.writerow([basename, loss, *list(out)])
         bpseq_str = tensor2bpseq(sequence, pred)
         with open(out_bpseq, 'w') as f:
             f.write(bpseq_str+'\n')

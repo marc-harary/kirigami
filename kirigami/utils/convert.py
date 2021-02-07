@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 from typing import Tuple
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from operator import itemgetter
 from itertools import permutations
 
@@ -157,7 +157,7 @@ def tensor2bpseq(sequence: torch.Tensor, label: torch.Tensor) -> str:
     return pairmap2bpseq(sequence_str, label_pair_map)
 
 
-def get_scores(pred_map: PairMap, ground_map: PairMap) -> Dict[str,float]:
+def get_scores(pred_map: PairMap, ground_map: PairMap) -> Scores: 
     '''Returns various evaluative scores of predicted secondary structure'''
     length = len(pred_map)
     assert length == len(ground_map)
@@ -169,13 +169,12 @@ def get_scores(pred_map: PairMap, ground_map: PairMap) -> Dict[str,float]:
     fp = len(pred_set) - tp
     fn = len(ground_set) - tp
     tn = total - tp - fp - fn
-    out = dict(tp=tp, fp=fp, fn=fn, tn=tn, pred_pairs=pred_pairs, ground_pairs=ground_pairs)
-    out['mcc'] = out['f1'] = 0
+    mcc = f1 = 0. 
     if len(pred_set) != 0 and len(ground_set) != 0:
         precision = tp / len(pred_set)
         recall = tp / len(ground_set)
         if tp > 0:
-            out['f1'] = 2 / (1/precision + 1/recall)
+            f1 = 2 / (1/precision + 1/recall)
         if (tp+fp) * (tp+fn) * (tn+fp) * (tn+fn) > 0:
-            out['mcc'] = (tp*tn-fp*fn) / ((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))**.5
-    return out
+            mcc = (tp*tn-fp*fn) / ((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))**.5
+    return Scores(tp, fp, fn, tn, mcc, f1, ground_pairs, pred_pairs)

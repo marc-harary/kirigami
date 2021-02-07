@@ -17,7 +17,7 @@ __all__ = ['AbstractASCIIDataset',
 
 class AbstractASCIIDataset(Dataset):
     '''abstract class for all ASCII-encoding datasets'''
-    def __init__(self, list_file: Path, embedding: Callable, quiet: bool = False) -> None:
+    def __init__(self, list_file: Path, embedding: Callable, quiet: bool = False, device: str) -> None:
         super().__init__()
         with open(list_file, 'r') as f:
             files = f.read().splitlines()
@@ -28,7 +28,7 @@ class AbstractASCIIDataset(Dataset):
         for file in loop:
             with open(file, 'r') as f:
                 txt = f.read()
-            self.data.append(embedding(txt))
+            self.data.append(embedding(txt).to(device))
 
     def __len__(self) -> int:
         return len(self.data)

@@ -24,27 +24,28 @@ __all__ = ['predict']
 def predict(args: Namespace) -> List[Path]:
     '''Evaluates model from config file'''
     config = path2munch(args.config)
-    return predict(config, args.in_list, args.out_list, args.out_directory, args.quiet)
+    return predict(config, args.in_list, args.out_list, args.out_directory, args.quiet, args.disable_gpu) 
 
 
-@dispatch(Munch, Path, Path, Path, bool)
+@dispatch(Munch, Path, Path, Path, bool, bool)
 def predict(config: Munch,
             in_list: Path,
             out_list: Path,
             out_dir: Path,
-            quiet: bool = False) -> List[Path]:
+            quiet: bool = False,
+            disable_gpu: bool = False) -> List[Path]:
     '''Evaluates model from config file'''
     try:
         saved = torch.load(config.data.best)
     except FileNotFoundError:
         saved = torch.load(config.data.checkpoint)
-    else:
-        raise FileNotFoundError('Can\'t find checkpoint files')
 
     os.path.exists(out_dir) or os.mkdir(out_dir)
 
-    model = MainNet(config.model)
+    device = torch.device('cuda:0' if torch.cuda.is_available() and disable_gpu else 'cpu')
+    model = MainNet(config.model).to(device)
     model.load_state_dict(saved['model_state_dict'])
+    model.eval()
 
     bpseqs = []
     fp = open(out_list, 'w')
@@ -57,7 +58,7 @@ def predict(config: Munch,
         fp.write(bpseq+'\n')
     fp.close()
 
-    dataset = FastaDataset(in_list, quiet)
+    dataset = FastaDataset(in_list, quiet, device)
     loader = DataLoader(dataset)
     loop_zip = zip(bpseqs, loader)
     loop = loop_zip if quiet else tqdm(loop_zip)

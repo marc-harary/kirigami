@@ -22,23 +22,28 @@ __all__ = ['train']
 @dispatch(Namespace)
 def train(args: Namespace) -> None:
     '''Train deep network based on config files'''
-    config, quiet, resume = path2munch(args.config), args.quiet, args.resume
-    return train(config, quiet, resume)
+    config = path2munch(args.config)
+    return train(config, args.disable_gpu, args.quiet, args.resume)
 
 
-@dispatch(Munch, bool, bool)
-def train(config: Munch, quiet: bool = False, resume: bool = False) -> None:
+@dispatch(Munch, bool, bool, bool)
+def train(config: Munch,
+          disable_gpu: bool = False,
+          quiet: bool = False,
+          resume: bool = False) -> None:
     '''Train deep network based on config files'''
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
     start_epoch = 0
-    model = MainNet(config.model)
+    model = MainNet(config.model).to(device)
     loss_func = eval(config.loss_func)
     optimizer = eval(config.optim)
 
     best_val_loss = float('inf')
-    train_set = BpseqDataset(config.data.training_list, quiet)
+    train_set = BpseqDataset(config.data.training_list, quiet, device)
     train_loader = DataLoader(train_set,
-                              batch_size=config.training.batch_size,
-                              shuffle=config.training.shuffle)
+                              batch_size=config.data.batch_size,
+                              shuffle=config.data.shuffle)
 
     if config.data.validation_list:
         val_set = BpseqDataset(config.data.validation_list, quiet)
@@ -47,8 +52,8 @@ def train(config: Munch, quiet: bool = False, resume: bool = False) -> None:
                                 shuffle=config.data.shuffle)
 
     if resume:
-        assert os.path.exists(config.data.checkpoint), "Cannot find checkpoint file"
-        checkpoint = torch.load(config.data.checkpoint)
+        assert os.path.exists(config.training.checkpoint), "Cannot find checkpoint file"
+        checkpoint = torch.load(config.training.checkpoint)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
         start_epoch = checkpoint['epoch']
@@ -65,14 +70,14 @@ def train(config: Munch, quiet: bool = False, resume: bool = False) -> None:
             loss = loss_func(pred, lab)
             train_loss_tot += loss
             loss.backward()
-            optimizer.zero_grad()
             optimizer.step()
+            optimizer.zero_grad()
         train_loss_mean = train_loss_tot / len(train_loader)
         torch.save({'epoch': epoch,
                     'model_state_dict': model.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'loss': train_loss_mean},
-                   config.data.checkpoint)
+                   config.training.checkpoint)
 
         if config.data.validation_list:
             val_loss_tot = 0.
@@ -87,7 +92,7 @@ def train(config: Munch, quiet: bool = False, resume: bool = False) -> None:
                             'model_state_dict': model.state_dict(),
                             'optimizer_state_dict': optimizer.state_dict(),
                             'loss': best_val_loss},
-                           config.data.best)
+                           config.training.best)
 
         if epoch % config.training.print_frequency == 0:
             print(f'Time for epoch {epoch}: {time.time() - start:.4} s')

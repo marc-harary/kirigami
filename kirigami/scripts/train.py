@@ -34,10 +34,12 @@ def train(config: Munch,
     '''Train deep network based on config files'''
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
-    start_epoch = 0
-    model = MainNet(config.model).to(device)
+    model = MainNet(config.model)
+    model.to(device)
+    model.train()
     loss_func = eval(config.loss_func)
     optimizer = eval(config.optim)
+    start_epoch = 0
 
     best_val_loss = float('inf')
     train_set = BpseqDataset(config.data.training_list, quiet, device)

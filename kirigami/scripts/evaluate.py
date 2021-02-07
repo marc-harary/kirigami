@@ -42,8 +42,9 @@ def evaluate(config: Munch,
         saved = torch.load(config.training.checkpoint)
 
     device = torch.device('cuda:0' if torch.cuda.is_available() and disable_gpu else 'cpu')
-    model = MainNet(config.model).to(device)
+    model = MainNet(config.model)
     model.load_state_dict(saved['model_state_dict'])
+    model.to(device)
     model.eval()
 
     os.path.exists(out_dir) or os.mkdir(out_dir)

@@ -5,11 +5,11 @@ from kirigami.scripts import *
 
 def main():
     parser = argparse.ArgumentParser(prog='kirigami')
-    parser.add_argument('--quiet', '-q', type=bool, help='quiet', default=False)
-    parser.add_argument('--disable-cuda', type=bool, help='Disable CUDA', default=False)
     subparsers = parser.add_subparsers(dest='command', required=True)
 
     parser_predict = subparsers.add_parser('predict', help='predict structure of `FASTA` files')
+    parser_predict.add_argument('--quiet', '-q', type=bool, help='quiet', default=False)
+    parser_predict.add_argument('--disable-cuda', type=bool, help='Disable CUDA', default=False)
     parser_predict.add_argument('--config', required=True, type=Path, help='path to config file')
     parser_predict.add_argument('--in-list', required=True, type=Path,
                                 help='path to input list file of `.fasta`\'s')
@@ -20,12 +20,16 @@ def main():
     parser_predict.set_defaults(func=predict)
 
     parser_train = subparsers.add_parser('train', help='train network')
+    parser_train.add_argument('--quiet', '-q', type=bool, help='quiet', default=False)
+    parser_train.add_argument('--disable-cuda', type=bool, help='Disable CUDA', default=False)
     parser_train.add_argument('--config', required=True, type=Path, help='path to config file')
     parser_train.add_argument('--resume', required=False, type=bool, default=False,
                               help='resume training using config file')
     parser_train.set_defaults(func=train)
 
     parser_evaluate = subparsers.add_parser('evaluate', help='evaluate network on test files')
+    parser_evaluate.add_argument('--quiet', '-q', type=bool, help='quiet', default=False)
+    parser_evaluate.add_argument('--disable-cuda', type=bool, help='Disable CUDA', default=False)
     parser_evaluate.add_argument('--config', required=True, type=Path, help='path to config file')
     parser_evaluate.add_argument('--in-list', required=True, type=Path,
                                  help='path to input list file of `.bpseqs`\'s')

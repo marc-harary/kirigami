@@ -21,9 +21,11 @@ class MainNet(nn.Module):
         for i in range(self.n_layers+1):
             layer = getattr(self, f'layer{i}')
             if isinstance(layer, nn.LSTM):
-                out = torch.transpose(out, 1, 2)
+                out = out.squeeze()
+                out = out.T
                 out, _ = layer(out)
-                out = torch.transpose(out, 1, 2)
+                out = out.T
+                out = out.unsqueeze(0)
             else:
                 out = layer(out)
         return out

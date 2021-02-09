@@ -23,32 +23,32 @@ __all__ = ['train']
 def train(args: Namespace) -> None:
     '''Train deep network based on config files'''
     config = path2munch(args.config)
-    return train(config, args.disable_gpu, args.quiet, args.resume)
+    return train(config, args.disable_cuda, args.quiet, args.resume)
 
 
 @dispatch(Munch, bool, bool, bool)
 def train(config: Munch,
-          disable_gpu: bool = False,
+          disable_cuda: bool = False,
           quiet: bool = False,
           resume: bool = False) -> None:
     '''Train deep network based on config files'''
-    loss_func = eval(config.loss_func)
-    optimizer = eval(config.optim)
-    start_epoch = 0
-
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     model = torch.nn.DataParallel(MainNet(config.model))
     model.to(device)
     model.train()
 
+    criterion = eval(config.criterion)
+    optimizer = eval(config.optim)
+    start_epoch = 0
+
     best_val_loss = float('inf')
-    train_set = BpseqDataset(config.data.training_list, quiet, device)
+    train_set = BpseqDataset(config.data.training_list, device, quiet)
     train_loader = DataLoader(train_set,
                               batch_size=config.data.batch_size,
                               shuffle=config.data.shuffle)
 
     if config.data.validation_list:
-        val_set = BpseqDataset(config.data.validation_list, quiet)
+        val_set = BpseqDataset(config.data.validation_list, device, quiet)
         val_loader = DataLoader(val_set,
                                 batch_size=config.data.batch_size,
                                 shuffle=config.data.shuffle)
@@ -69,7 +69,7 @@ def train(config: Munch,
         train_loss_tot = 0.
         for seq, lab in train_loader:
             pred = model(seq)
-            loss = loss_func(pred, lab)
+            loss = criterion(pred, lab)
             train_loss_tot += loss
             loss.backward()
             optimizer.step()
@@ -85,7 +85,7 @@ def train(config: Munch,
             val_loss_tot = 0.
             for seq, lab in val_loader:
                 pred = model(seq)
-                loss = loss_func(pred, lab)
+                loss = criterion(pred, lab)
                 val_loss_tot += loss
             val_loss_mean = val_loss_tot / len(val_loader)
             if val_loss_mean < best_val_loss:

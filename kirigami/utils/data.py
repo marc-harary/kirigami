@@ -17,7 +17,11 @@ __all__ = ['AbstractASCIIDataset',
 
 class AbstractASCIIDataset(Dataset):
     '''abstract class for all ASCII-encoding datasets'''
-    def __init__(self, list_file: Path, embedding: Callable, quiet: bool = False, device: str) -> None:
+    def __init__(self,
+                 list_file: Path,
+                 embedding: Callable,
+                 device: torch.device,
+                 quiet: bool = False) -> None:
         super().__init__()
         with open(list_file, 'r') as f:
             files = f.read().splitlines()
@@ -28,7 +32,9 @@ class AbstractASCIIDataset(Dataset):
         for file in loop:
             with open(file, 'r') as f:
                 txt = f.read()
-            self.data.append(embedding(txt).to(device))
+            emb = embedding(txt)
+            emb = tuple(map(lambda x: x.to(device), emb)) if isinstance(emb, tuple) else emb.to(device)
+            self.data.append(emb)
 
     def __len__(self) -> int:
         return len(self.data)
@@ -39,17 +45,26 @@ class AbstractASCIIDataset(Dataset):
 
 class FastaDataset(AbstractASCIIDataset):
     '''loads and embeds `FASTA` files'''
-    def __init__(self, list_file: Path, quiet: bool = False) -> None:
-        super(FastaDataset, self).__init__(list_file, sequence2tensor, quiet)
+    def __init__(self,
+                 list_file: Path,
+                 device: torch.device,
+                 quiet: bool = False) -> None:
+        super(FastaDataset, self).__init__(list_file, sequence2tensor, device, quiet)
 
 
 class LabelDataset(AbstractASCIIDataset):
     '''loads and embeds `label` files'''
-    def __init__(self, list_file: Path, quiet: bool = False) -> None:
-        super().__init__(list_file, label2tensor, quiet)
+    def __init__(self,
+                 list_file: Path,
+                 device: torch.device,
+                 quiet: bool = False) -> None:
+        super().__init__(list_file, label2tensor, device, quiet)
 
 
 class BpseqDataset(AbstractASCIIDataset):
     '''loads and embeds `bpseq` files'''
-    def __init__(self, list_file: Path, quiet: bool = False) -> None:
-        super().__init__(list_file, bpseq2tensor, quiet)
+    def __init__(self,
+                 list_file: Path,
+                 device: torch.device,
+                 quiet: bool = False) -> None:
+        super().__init__(list_file, bpseq2tensor, device, quiet)

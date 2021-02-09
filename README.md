@@ -2,24 +2,22 @@
 RNA secondary structure prediction via deep learning.
 
 ## Requirements
-* python (>=3.9)
+* python (>=3.8)
 * C++17 compatible compiler
-* Docker
-* Singularity
+* virtualenv
 
 ## Install
 ```
-docker pull python
-chmod +x run.sh
-./run.sh pip install .
+git clone https://github.com/marc-harary/kirigami.git
+cd kirigami
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+pip install .
 ```
 
 ## Usage
-Commands are run within the `python3.9` Singularity container as follows:
-```
-./run.sh kirigami $COMMAND $OPTION+
-```
-The arguments to the `kirigami` module itself are as follows:
+The arguments to the `kirigami` module are passed as follows:
 ```
 usage: kirigami [-h] [--quiet QUIET] {embed,train,evaluate} ...
 

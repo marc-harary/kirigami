@@ -64,7 +64,7 @@ def evaluate(config: Munch,
     loader = DataLoader(dataset)
     loop_zip = zip(out_bpseqs, loader)
     loop = loop_zip if quiet else tqdm(loop_zip)
-    loss_func = eval(config.loss_func)
+    criterion = eval(config.criterion)
 
     fp = open(out_csv, 'w')
     writer = csv.writer(fp)
@@ -72,7 +72,7 @@ def evaluate(config: Munch,
     loss_tot, f1_tot, mcc_tot = 0., 0., 0.
     for out_bpseq, (sequence, ground) in loop:
         pred = model(sequence)
-        loss = float(loss_func(pred, ground))
+        loss = float(criterion(pred, ground))
         pred = binarize(pred, thres=thres)
         pair_map_pred, pair_map_ground = tensor2pairmap(pred), tensor2pairmap(ground)
         basename = os.path.basename(out_bpseq)

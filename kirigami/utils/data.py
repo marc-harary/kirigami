@@ -2,7 +2,7 @@
 
 
 from pathlib import Path
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Union
 from tqdm import tqdm
 import torch
 from torch.utils.data import Dataset
@@ -51,7 +51,8 @@ class AbstractASCIIDataset(Dataset):
         super().__init__()
         with open(list_file, 'r') as f:
             self.files = f.read().splitlines()
-        if self.batch_load := batch_load:
+        self.batch_load = batch_load
+        if self.batch_load:
             loop = files
             if not quiet:
                 loop = tqdm(files)

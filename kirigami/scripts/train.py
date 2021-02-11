@@ -37,8 +37,8 @@ def train(config: Munch,
     model.to(device)
     model.train()
 
-    criterion = eval(config.criterion)
-    optimizer = eval(config.optim)
+    criterion = eval(config.training.criterion)
+    optimizer = eval(config.training.optimizer)
     start_epoch = 0
     best_val_loss = float('inf')
 

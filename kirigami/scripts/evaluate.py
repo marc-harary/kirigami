@@ -68,7 +68,7 @@ def evaluate(config: Munch,
     loader = DataLoader(dataset)
     loop_zip = zip(out_bpseqs, loader)
     loop = loop_zip if quiet else tqdm(loop_zip)
-    criterion = eval(config.criterion)
+    criterion = eval(config.training.criterion)
 
     fp = open(out_csv, 'w')
     writer = csv.writer(fp)

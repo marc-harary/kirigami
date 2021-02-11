@@ -10,22 +10,21 @@ import torch
 from torch.utils.data import DataLoader
 
 from kirigami.utils.data import BpseqDataset
-from kirigami.utils.convert import bpseq2tensor
+from kirigami.utils.convert import bpseq2tensor, path2munch
 from kirigami.nn.MainNet import MainNet
 
 
 @dispatch(Namespace)
 def embed(args: Namespace) -> List[Path]:
     '''Evaluates model from config file'''
-    config = path2munch(args.config)
-    return embed(args.in_list, args.out_directory, quiet) 
+    return embed(args.in_list, args.out_directory, args.quiet) 
 
 
-@dispatch(Munch, Path, Path, float, bool, bool)
-def embed(config: Munch,
-          out_dir: Path,
+@dispatch(Path, Path, bool)
+def embed(in_list: Path,
+          out_directory: Path,
           quiet: bool = False) -> List[Path]:
-    with open(config.in_list, 'r') as f:
+    with open(in_list, 'r') as f:
         in_files = f.read().splitlines()
 
     out_files = []
@@ -33,7 +32,7 @@ def embed(config: Munch,
         out_file = os.path.basename(file)
         out_file, _ = os.path.splitext(out_file)
         out_file += '.pt'
-        out_file = os.path.join(out_dir, out_file) 
+        out_file = os.path.join(out_directory, out_file) 
         out_files.append(out_file)
         
     zipped = zip(in_files, out_files)

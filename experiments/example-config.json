@@ -19,7 +19,7 @@
         "epochs": 1000,
         "print_frequency": 10,
         "checkpoint": "checkpoint.pt",
-        "best": "best.pt"
+        "best": "best.pt",
         "criterion": "torch.nn.BCELoss()",
         "optimizer": "torch.optim.Adam(model.parameters(), lr=1e-4)",
     }

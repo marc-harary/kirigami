@@ -1,0 +1,28 @@
+{
+    "data": {
+        "training_list": "/path/to/training/list",
+        "validation_list": "/path/to/validation/list",
+        "batch_load": true,
+        "batch_size": 1,
+        "shuffle": true
+    },
+
+    "training": {
+        "epochs": 1000,
+        "print_frequency": 10,
+        "checkpoint": "checkpoint.pt",
+        "best": "best.pt"
+    },
+
+    "criterion": "torch.nn.BCELoss()",
+
+    "optim": "torch.optim.Adam(model.parameters(), lr=1e-4)",
+
+    "model": [
+        "torch.nn.Conv2d(in_channels=8, out_channels=32, kernel_size=5, padding=2)",
+        "kirigami.nn.ResNet.ResNet(n_channels=32, p=0.25, n_blocks=4)",
+        "torch.nn.LSTM(input_size=32, hidden_size=32, num_layers=4, dropout=0.25, bidirectional=True)",
+        "torch.nn.Conv2d(in_channels=64, out_channels=1, kernel_size=5, padding=2)",
+        "torch.nn.Sigmoid()"
+    ]
+}

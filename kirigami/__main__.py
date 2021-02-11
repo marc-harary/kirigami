@@ -15,7 +15,7 @@ def main():
                                 help='path to input list file of `.fasta`\'s')
     parser_predict.add_argument('--out-list', required=True, type=Path,
                                 help='path to output list file of `.bpseq`\'s')
-    parser_predict.add_argument('--out-directory', required=True, type=Path,
+    parser_predict.add_argument('--out-directory', required=False, default='.', type=Path,
                                 help='path to output directory of `.bpseqs`\'s')
     parser_predict.set_defaults(func=predict)
 
@@ -33,12 +33,24 @@ def main():
     parser_evaluate.add_argument('--config', required=True, type=Path, help='path to config file')
     parser_evaluate.add_argument('--in-list', required=True, type=Path,
                                  help='path to input list file of `.bpseqs`\'s')
-    parser_evaluate.add_argument('--out-directory', required=True, type=Path,
+    parser_evaluate.add_argument('--out-directory', required=False, type=Path, default='.'
                                  help='path to output directory of `.fastas`\'s and `.bpseq`\'s')
-    parser_evaluate.add_argument('--thres', type=float, default=.5,
+    parser_evaluate.add_argument('--thres', type=float, required=False, default=.5,
                                  help='threshhold for binarizing output file')
     parser_evaluate.set_defaults(func=evaluate)
 
+    parser_embed = subparsers.add_parser('evaluate', help='evaluate network on test files')
+    parser_embed.add_argument('--quiet', '-q', type=bool, help='quiet', required=False, default=False)
+    parser_embed.add_argument('--disable-cuda', type=bool, help='Disable CUDA', required=False, default=False)
+    parser_embed.add_argument('--config', required=True, type=Path, help='path to config file')
+    parser_embed.add_argument('--in-list', required=True, type=Path,
+                              help='path to input list file of `.bpseqs`\'s')
+    parser_embed.add_argument('--out-directory', required=False, default='.', type=Path,
+                              help='path to output directory of `.fastas`\'s and `.bpseq`\'s')
+    parser_embed.add_argument('--thres', type=float, default=.5,
+                              help='threshhold for binarizing output file')
+    parser_embed.set_defaults(func=embed)
+    
     args = parser.parse_args()
     args.func(args)
 

@@ -59,8 +59,12 @@ def evaluate(config: Munch,
         out_bpseq = os.path.basename(in_bpseq)
         out_bpseq = os.path.join(bpseq_dir, out_bpseq)
         out_bpseqs.append(out_bpseq)
-
-    dataset = BpseqDataset(in_list, quiet, device)
+    
+    dataset_class = EmbeddedDataset if config.pre_embedded else BpseqDataset
+    dataset = dataset_class(train_set,
+                            batch_size=config.data.batch_size,
+                            shuffle=config.data.shuffle,
+                            batch_load=config.batch_load)
     loader = DataLoader(dataset)
     loop_zip = zip(out_bpseqs, loader)
     loop = loop_zip if quiet else tqdm(loop_zip)

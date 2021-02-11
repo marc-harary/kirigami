@@ -40,18 +40,21 @@ def train(config: Munch,
     criterion = eval(config.criterion)
     optimizer = eval(config.optim)
     start_epoch = 0
-
     best_val_loss = float('inf')
-    train_set = BpseqDataset(config.data.training_list, device, quiet)
+
+    dataset = EmbeddedDataset if config.pre_embedded else BpseqDataset
+    train_set = dataset(config.data.training_list, device, quiet)
     train_loader = DataLoader(train_set,
                               batch_size=config.data.batch_size,
-                              shuffle=config.data.shuffle)
+                              shuffle=config.data.shuffle,
+                              batch_load=config.batch_load)
 
     if config.data.validation_list:
-        val_set = BpseqDataset(config.data.validation_list, device, quiet)
+        val_set = dataset(config.data.validation_list, device, quiet)
         val_loader = DataLoader(val_set,
                                 batch_size=config.data.batch_size,
-                                shuffle=config.data.shuffle)
+                                shuffle=config.data.shuffle,
+                                batch_load=config.batch_load)
 
     if resume:
         assert os.path.exists(config.training.checkpoint), "Cannot find checkpoint file"

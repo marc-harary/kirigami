@@ -50,6 +50,7 @@ def pairmap2tensor(pairs: PairMap, out_dim: int = 3) -> torch.Tensor:
         out.unsqueeze_(0)
     return out
 
+
 def sequence2tensor(sequence: str) -> torch.Tensor:
     '''Converts `FASTA` sequence to `torch.Tensor`'''
     sequence_copy = sequence.strip().upper()
@@ -61,28 +62,6 @@ def sequence2tensor(sequence: str) -> torch.Tensor:
     cols = rows.permute(0, 2, 1)
     out = torch.vstack((rows,cols))
     return out
-
-def old(sequence: str) -> torch.Tensor:
-    '''Converts `FASTA` sequence to `torch.Tensor`'''
-    sequence_copy = sequence.strip().upper()
-    length = len(sequence_copy)
-    one_hot = torch.stack([BASE_DICT[char] for char in sequence_copy])
-    out = torch.empty(2 * N_BASES, length, length)
-    for i in range(length):
-        for j in range(length):
-            out[:,i,j] = torch.cat((one_hot[i], one_hot[j]))
-    return out
-
-# def sequence2tensor(sequence: str) -> torch.Tensor:
-#     '''Converts `FASTA` sequence to `torch.Tensor`'''
-#     sequence_copy = sequence.strip().upper()
-#     length = len(sequence_copy)
-#     one_hot = torch.stack([BASE_DICT[char] for char in sequence_copy])
-#     out = torch.empty(2 * N_BASES, length, length)
-#     for i in range(length):
-#         for j in range(length):
-#             out[:,i,j] = torch.cat((one_hot[i], one_hot[j]))
-#     return out
 
 
 def label2tensor(label: str, out_dim: int = 4) -> torch.Tensor:

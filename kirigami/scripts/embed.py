@@ -24,7 +24,7 @@ def embed(args: Namespace) -> List[Path]:
 def embed(in_list: Path,
           out_directory: Path,
           quiet: bool = False) -> List[Path]:
-    os.path.exist(out_directory) or os.mkdir(out_directory)
+    os.path.exists(out_directory) or os.mkdir(out_directory)
 
     with open(in_list, 'r') as f:
         in_files = f.read().splitlines()

@@ -1,6 +1,3 @@
-'''predict `FASTA` files based on input config file'''
-
-
 import os
 from argparse import Namespace
 from pathlib import Path
@@ -17,14 +14,19 @@ from kirigami.utils.convert import binarize, tensor2bpseq, path2munch
 from kirigami.nn.MainNet import MainNet
 
 
-__all__ = ['predict']
+__all__ = ["predict"]
 
 
 @dispatch(Namespace)
 def predict(args: Namespace) -> List[Path]:
-    '''Evaluates model from config file'''
+    """Evaluates model from config file"""
     config = path2munch(args.config)
-    return predict(config, args.in_list, args.out_list, args.out_directory, args.quiet, args.disable_gpu) 
+    return predict(config=config,
+                   in_list=args.in_list,
+                   out_list=args.out_list,
+                   out_dir=args.out_directory,
+                   quiet=args.quiet,
+                   disable_gpu=args.disable_gpu) 
 
 
 @dispatch(Munch, Path, Path, Path, bool, bool)
@@ -34,7 +36,8 @@ def predict(config: Munch,
             out_dir: Path,
             quiet: bool = False,
             disable_gpu: bool = False) -> List[Path]:
-    '''Evaluates model from config file'''
+    """Evaluates model from config file"""
+
     try:
         saved = torch.load(config.data.best)
     except FileNotFoundError:
@@ -42,21 +45,21 @@ def predict(config: Munch,
 
     os.path.exists(out_dir) or os.mkdir(out_dir)
 
-    device = torch.device('cuda:0' if torch.cuda.is_available() and disable_gpu else 'cpu')
+    device = DEVICE if not disable_gpu else torch.device("cpu")
     model = torch.nn.DataParallel(MainNet(config.model))
-    model.load_state_dict(saved['model_state_dict'])
+    model.load_state_dict(saved["model_state_dict"])
     model.to(device)
     model.eval()
 
     bpseqs = []
-    fp = open(out_list, 'w')
-    with open(in_list, 'r') as f:
+    fp = open(out_list, "w")
+    with open(in_list, "r") as f:
         fastas = f.read().splitlines()
     for fasta in fastas:
         bpseq = os.path.basename(fasta)
         bpseq = os.path.join(out_dir, bpseq)
         bpseq.append(bpseq)
-        fp.write(bpseq+'\n')
+        fp.write(bpseq+"\n")
     fp.close()
 
     dataset = FastaDataset(in_list, quiet, device)
@@ -68,7 +71,7 @@ def predict(config: Munch,
         pred = model(sequence)
         pred = binarize(pred)
         bpseq_str = tensor2bpseq(sequence, pred)
-        with open(bpseq, 'w') as f:
-            f.write(bpseq_str+'\n')
+        with open(bpseq, "w") as f:
+            f.write(bpseq_str+"\n")
 
     return bpseqs

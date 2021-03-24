@@ -72,25 +72,34 @@ def dotbracket2pairmap(dot_bracket: str) -> PairMap:
         start_idx += 1
     lines = lines[start_idx]
     paren = deque()
-    brack = deque()
-    out = []
+    square = deque()
+    curly = deque()
+    out = {}
     for i, char in enumerate(lines):
         if char == ".":
-            out.append(NO_CONTACT)
+            out[i] = NO_CONTACT
         elif char == "(":
-            out.append(NO_CONTACT)
+            out[i] = NO_CONTACT
             paren.append(i)
         elif char == ")":
             j = paren.pop()
-            out.append(j)
+            out[i] = j
             out[j] = i
         elif char == "[":
-            out.append(NO_CONTACT)
-            brack.append(i)
+            out[i] = NO_CONTACT
+            square.append(i)
         elif char == "]":
-            j = brack.pop()
-            out.append(j)
+            j = square.pop()
+            out[i] = j
             out[j] = i
+        elif char == "{":
+            out[i] = NO_CONTACT
+            curly.append(i)
+        elif char == "}":
+            j = curly.pop()
+            out[i] = j
+            out[j] = i
+                
     return out
             
 
@@ -140,7 +149,7 @@ def st2pairmap(st: str) -> Tuple[str, PairMap]:
 
 def st2tensor(st: str) -> Tuple[torch.Tensor, torch.Tensor]:
     """Converts `.st` file to string and `PairMap`"""
-    sequence, pair_map = str2pairmap(st)
+    sequence, pair_map = st2pairmap(st)
     return sequence2tensor(sequence), pairmap2tensor(pair_map)
     
 

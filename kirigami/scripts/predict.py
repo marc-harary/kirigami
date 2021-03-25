@@ -11,7 +11,6 @@ from torch.utils.data import DataLoader
 
 from kirigami.utils.data import FastaDataset
 from kirigami.utils.convert import binarize, tensor2bpseq, path2munch
-from kirigami.nn.MainNet import MainNet
 
 
 __all__ = ["predict"]

@@ -12,7 +12,6 @@ from torch.utils.data import DataLoader
 
 from kirigami.utils.data import BpseqDataset
 from kirigami.utils.convert import path2munch, binarize, tensor2pairmap, get_scores, tensor2bpseq
-from kirigami.nn.MainNet import MainNet
 
 
 __all__ = ["evaluate"]

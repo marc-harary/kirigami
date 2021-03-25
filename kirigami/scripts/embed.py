@@ -11,7 +11,6 @@ from torch.utils.data import DataLoader
 
 from kirigami.utils.data import BpseqDataset
 from kirigami.utils.convert import bpseq2tensor, path2munch, st2tensor
-from kirigami.nn.MainNet import MainNet
 
 
 @dispatch(Namespace)

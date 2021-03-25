@@ -75,8 +75,9 @@ def main():
     data.add_argument("--batch-load",
                       action="store_true",
                       help="pre-load and pre-embed all files prior to training")
-    data.add_argument("--copy-to-gpu",
-                      action="store_true",
+    data.add_argument("--data-device",
+                      required=True,
+                      choices=["cpu","gpu"],
                       help="store files on CPU but train on GPU")
 
     parser_train.add_argument("--epochs",
@@ -91,13 +92,19 @@ def main():
                               type=str,
                               required=True,
                               help="optimizer algorithm for training")
-    parser_train.add_argument("--add-layer",
-                              metavar="LAYER",
-                              required=True,
-                              action="append",
-                              dest="layers",
-                              type=str,
-                              help="add layers to model")
+
+    model = parser_train.add_argument_group()
+    model.add_argument("--add-layer",
+                       metavar="LAYER",
+                       required=True,
+                       action="append",
+                       dest="layers",
+                       type=str,
+                       help="add layers to model")
+    model.add_argument("--model-device",
+                       required=True,
+                       choices=["cpu","gpu"],
+                       help="store model on CPU or GPU") 
 
     parser_train.add_argument("--training-checkpoint-file",
                               required=True,
@@ -119,6 +126,7 @@ def main():
                               help="quiet")
     parser_train.add_argument("--show-bar",
                               action="store_true",
+                              default=False,
                               help="show tqdm progress bar")
     parser_train.add_argument("--disable-cuda",
                               action="store_true",

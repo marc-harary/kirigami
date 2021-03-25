@@ -11,8 +11,10 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 
+import kirigami.nn
 from kirigami._globals import *
 from kirigami.utils.data import BpseqDataset, EmbeddedDataset, StDataset
+from kirigami.utils.convert import *
 
 
 __all__ = ["Train"] 
@@ -20,12 +22,14 @@ __all__ = ["Train"]
 
 class Train:
     def __init__(self,
-                 device: torch.device,
+                 model_device: torch.device,
+                 data_device: torch.device,
                  model: nn.Module,
                  optimizer: torch.optim,
                  criterion: Callable,
-                 training_set: DataLoader,
-                 validation_set: Union[DataLoader,None],
+                 epochs: int,
+                 training_set: Dataset,
+                 validation_set: Union[Dataset,None],
                  log_file: Union[Path,None],
                  training_checkpoint_file: Union[Path,None],
                  validation_checkpoint_file: Union[Path,None],
@@ -37,19 +41,23 @@ class Train:
         self.model = model
         self.optimizer = optimizer
         self.criterion = criterion
+        self.epochs = epochs
 
         self.training_loader = DataLoader(training_set, shuffle=shuffle, batch_size=batch_size)
         if validation_set:
             self.validation_loader = DataLoader(validation_set, shuffle=shuffle, batch_size=batch_size)
+            self.best_mean_mcc = float("inf")
 
         self.log_file = log_file
-        self.checkpoint_path = checkpoint_file
-        self.validation_file = validation_file
+        self.training_checkpoint_file = training_checkpoint_file
+        self.validation_checkpoint_file = validation_checkpoint_file
         self.disable_cuda = disable_cuda
         self.quiet = quiet
+        self.show_bar = show_bar
 
-        self.device = device
-        self.model.to(device)
+        self.data_device = data_device
+        self.model_device = model_device
+        self.model.to(model_device)
 
 
     def log(self, message: str):
@@ -57,15 +65,14 @@ class Train:
             return
         if self.log_file:
             logging.basicConfig(filename=self.log_file, level=logging.INFO)
-        logging.info(message)
+        logging.info(" " + message)
 
 
     def run(self, resume: bool = False):
-        self.log("Starting at " + str(datetime.datetime.now()))
+        self.log("Starting training at " + str(datetime.datetime.now()))
             
-        model.train()
+        self.model.train()
         start_epoch = 0
-        best_val_loss = float("inf")
 
         if resume:
             checkpoint = torch.load(self.checkpoint_file)
@@ -83,87 +90,109 @@ class Train:
             self.log(f"Starting epoch {epoch} at {start}")
 
             train_loss_tot = 0.
-            inner_loop = tqdm(self.training_loader) if self.show_bar else self.training_loader
-            for seq, lab in inner_loop:
-                pred = self.model(seq)
-                loss = self.criterion(pred, lab)
+            # inner_loop = tqdm(self.training_loader) if self.show_bar else self.training_loader
+            
+            for seq, lab in self.training_loader:
+                seq_moved = seq.to(self.model_device)       
+                lab_moved = lab.to(self.model_device)
+                pred = self.model(seq_moved)
+                loss = self.criterion(pred, lab_moved)
                 train_loss_tot += loss
                 loss.backward()
                 self.optimizer.step()
                 self.optimizer.zero_grad()
+                del seq_moved, lab_moved, pred, loss
             train_loss_mean = train_loss_tot / len(self.training_loader)
             state_dict = self.model.state_dict()
             torch.save({"epoch": epoch,
                         "model_state_dict": self.model.state_dict(),
                         "optimizer_state_dict": self.optimizer.state_dict(),
                         "loss": train_loss_mean},
-                        self.checkpoint_file)
+                        self.training_checkpoint_file)
 
             if self.validation_loader:
-                self.validate()
+                self.validate(epoch)
 
             end = datetime.datetime.now()
             delta = end - start
-            self.log(f"Time for epoch {epoch}: {delta.seconds} s")
             self.log(f"Mean training loss for epoch {epoch}: {train_loss_mean}")
+            self.log(f"Time for epoch {epoch}: {delta.seconds} s\n")
                          
 
-    def validate(self):
+    def validate(self, epoch: int) -> None:
         # TODO: include dynamic programming here
-        # TODO: include F1 and MCC scores
-        # TODO: save parameters with best F1 and MCC scores, not best loss
-        # self.model.cpu()
         self.model.eval()
-        val_loss_tot = 0.
-        for seq, lab in self.validation_loader:
-            pred = self.model(seq)
-            loss = self.criterion(pred, lab)
-            val_loss_tot += loss
-        val_loss_mean = val_loss_tot / len(val_loader)
-        if val_loss_mean < best_val_loss:
-            best_val_loss = val_loss_mean
+        mean_loss = 0.
+        mean_mcc = 0.
+        mean_f1 = 0.
+        with torch.no_grad():
+            for seq, lab in self.validation_loader:
+                if self.model_device != self.data_device:
+                    seq_moved = seq.to(self.model_device)       
+                    lab_moved = lab.to(self.model_device)
+                pred = self.model(seq_moved)
+                loss = self.criterion(pred, lab_moved)
+                pred_pair_map = tensor2pairmap(pred)
+                lab_pair_map = tensor2pairmap(lab_moved)
+                scores = get_scores(pred_pair_map, lab_pair_map)
+                mean_mcc += scores[4]
+                mean_f1 += scores[5] 
+                mean_loss += loss
+                del seq_moved, lab_moved, pred, loss
+        mean_loss /= len(self.validation_loader)
+        mean_f1 /= len(self.validation_loader)
+        mean_mcc /= len(self.validation_loader) 
+        if mean_mcc < self.best_mean_mcc:
+            self.best_mean_mcc = mean_mcc
+            self.log(f"New optimum at epoch {epoch}")
+            self.best_validation_loss = mean_loss
             torch.save({"epoch": epoch,
                         "model_state_dict": self.model.state_dict(),
                         "optimizer_state_dict": self.optimizer.state_dict(),
-                        "loss": best_val_loss},
-                       self.validation_file)
-        # self.model.cuda()
+                        "mean_mcc": mean_mcc,
+                        "mean_f1": mean_f1,
+                        "loss": self.best_validation_loss},
+                       self.validation_checkpoint_file)
+        self.log(f"Mean validation loss for epoch {epoch}: {mean_loss}")
+        self.log(f"Mean MCC for epoch {epoch}: {mean_mcc}")
+        self.log(f"Mean F1 for epoch {epoch}: {mean_f1}")
         self.model.train()
-        self.log(f"Mean validation loss for epoch {epoch}: {val_loss_mean}\n")
 
 
     @classmethod
     def from_namespace(cls, args: argparse.Namespace):
-        model = nn.Sequential(*[eval(layer) for layer in args.layers])
-        optimizer = eval(args.optimizer)
-        criterion = eval(args.criterion)
+        if args.model_device == "gpu":
+            if torch.cuda.is_available():
+                model_device = torch.device("cuda")
+            else:
+                raise ValueError("CUDA is not available")
+        else:
+            model_device = torch.device("cpu")
 
-        if torch.cuda.is_available() and not args.disable_cuda:
-            device = torch.device("cuda")
-            if args.copy_to_gpu:
+        if args.data_device == "gpu":
+            if torch.cuda.is_available():
                 data_device = torch.device("cuda")
             else:
-                data_device = torch.device("cpu")
+                raise ValueError("CUDA is not available")
         else:
-            data_device = device = torch.device("cpu")
-
+            data_device = torch.device("cpu")
+        
         if args.training_filetype == "bpseq-lst":
             training_set = BpseqDataset(list_file=args.training_file,
                                         device=data_device,
-                                        quiet=args.quiet,
                                         batch_load=args.batch_load)
         elif args.training_filetype == "pt-lst":
             training_set = EmbeddedDataset(list_file=args.training_file,
                                            device=data_device,
-                                           quiet=args.quiet,
                                            batch_load=args.batch_load)
         elif args.training_filetype == "st-lst":
             training_set = StDataset(list_file=args.training_file,
                                      device=data_device,
-                                     quiet=args.quiet,
                                      batch_load=args.batch_load)
         elif args.training_filetype == "pt":
             training_set = torch.load(args.training_file)
+            if training_set.device != data_device:
+                training_set.to(data_device)
         else:
             raise ValueError("Invalid file type")
 
@@ -171,29 +200,35 @@ class Train:
             if args.validation_filetype == "bpseq-lst":
                 validation_set = BpseqDataset(list_file=args.validation_file,
                                               device=data_device,
-                                              batch_load=args.batch_load,
-                                              quiet=args.quiet)
+                                              batch_load=args.batch_load)
             elif args.validation_filetype == "pt-lst":
                 validation_set = EmbeddedDataset(list_file=args.validation_file,
                                                  device=data_device,
-                                                 batch_load=args.batch_load,
-                                                 quiet=args.quiet)
+                                                 batch_load=args.batch_load)
             elif args.validation_filetype == "st-lst":
                 validation_set = StDataset(args.validation_file,
                                            device=data_device,
-                                           batch_load=args.batch_load,
-                                           quiet=args.quiet)
+                                           batch_load=args.batch_load)
             elif args.validation_filetype == "pt":
                 validation_set = torch.load(args.validation_file)
+                if validation_set.device != data_device:
+                    validation_set.to(data_device)
             else:
                 raise ValueError("Invalid file type")
         else:
             validation_set = None
-    
+
+        model = nn.Sequential(*[eval(layer) for layer in args.layers])
+        model.to(model_device)
+        optimizer = eval(args.optimizer)
+        criterion = eval(args.criterion)
+
         return cls(model=model, 
-                   device=device,
+                   model_device=model_device,
+                   data_device=data_device,
                    optimizer=optimizer,
                    criterion=criterion,
+                   epochs=args.epochs,
                    training_set=training_set,
                    validation_set=validation_set,
                    log_file=args.log_file,

@@ -1,3 +1,4 @@
-from kirigami.nn.SPOT import *
-from kirigami.nn.ResNet import *
-from kirigami.nn.Symmetrize import *
+from kirigami.nn.spot import *
+from kirigami.nn.resnet import *
+from kirigami.nn.symmetrize import *
+from kirigami.nn.loss import *

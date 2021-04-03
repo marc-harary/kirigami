@@ -8,5 +8,4 @@ class Symmetrize(nn.Module):
         super().__init__()
 
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
-        ipt += ipt.permute(0, 1, 3, 2)
-        return ipt / 2
+        return (ipt + ipt.permute(0, 1, 3, 2)) / 2

@@ -134,52 +134,37 @@ def main():
     parser_train.set_defaults(func = lambda namespace: Train.from_namespace(namespace).run(namespace.resume))
 
 
-    parser_evaluate = subparsers.add_parser("evaluate", help="evaluate network on test files")
-    model = parser_evaluate.add_argument_group()
-    model.add_argument("--add-layer",
-                       metavar="LAYER",
-                       required=True,
-                       action="append",
-                       dest="layers",
-                       type=str,
-                       help="add layers to model")
-    data = parser_evaluate.add_argument_group()
-    data.add_argument("--test-file",
-                      required=True,
-                      type=Path, 
-                      help="path to dataset file")
-    data.add_argument("--test-filetype",
-                      choices=["bpseq-list","pt-list", "st-list","pt"],
-                      type=str,
-                      help="file type of test set")
-    parser_evaluate.add_argument("--out-directory",
-                                 nargs="?",
-                                 required=True,
-                                 type=argparse.FileType("w"),
-                                 default=sys.stdout,
-                                 help="path to input list file of `.bpseqs`\"s")
-    parser_evaluate.add_argument("--threshold",
-                                 nargs="?",
-                                 default=.5,
-                                 type=float,
-                                 help="threshhold for binarizing output file")
-    parser_evaluate.add_argument("--log-file",
-                                 default=sys.stdout,
-                                 type=Path,
-                                 help="path to log file")
-    parser_evaluate.add_argument("--quiet",
-                                 action="store_true",
-                                 help="quiet")
-    parser_evaluate.add_argument("--disable-cuda",
-                                 action="store_true",
-                                 help="disable CUDA")
-    # parser_evaluate.set_defaults(func = lambda args: evaluate(config=munchify(args.config),
-    #                                                           in_list=args.in_list,
-    #                                                           out_dir=args.out_directory,
-    #                                                           thres=args.thres,
-    #                                                           log_file=args.log_file,
-    #                                                           quiet=args.quiet,
-    #                                                           disable_gpu=args.disable_gpu))
+    parser_test = subparsers.add_parser("evaluate", help="evaluate network on test files")
+    test_model = parser_test.add_argument_group()
+    test_model.add_argument("--add-layer",
+                            metavar="LAYER",
+                            required=True,
+                            action="append",
+                            dest="layers",
+                            type=str,
+                            help="add layers to model")
+    test_data = parser_test.add_argument_group()
+    test_data.add_argument("--test-file",
+                           required=True,
+                           type=Path, 
+                           help="path to test set file")
+    test_data.add_argument("--test-filetype",
+                           choices=["bpseq-list","pt-list", "st-list"],
+                           type=str,
+                           help="file type of test set")
+    parser_test.add_argument("--out-file",
+                             required=True,
+                             type=Path,
+                             help="path to output `.csv` file")
+    parser_test.add_argument("--thres",
+                             nargs="?",
+                             default=.5,
+                             type=float,
+                             help="threshhold for binarizing output file")
+    parser_test.add_argument("--show_bar",
+                             action="store_true",
+                             help="show tqdm progress bar")
+    parser_test.set_defaults(func = lambda namespace: Test.from_namespace(namespace).run())
 
 
     parser_embed = subparsers.add_parser("embed", help="embed various files")

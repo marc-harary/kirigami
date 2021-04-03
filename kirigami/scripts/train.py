@@ -22,45 +22,36 @@ __all__ = ["Train"]
 
 class Train:
     def __init__(self,
-                 model_device: torch.device,
-                 data_device: torch.device,
                  model: nn.Module,
+                 model_device: torch.device,
                  optimizer: torch.optim,
                  criterion: Callable,
                  epochs: int,
-                 training_set: Dataset,
-                 validation_set: Union[Dataset,None],
+                 training_loader: DataLoader,
+                 validation_loader: Union[DataLoader,None],
                  log_file: Union[Path,None],
                  training_checkpoint_file: Union[Path,None],
                  validation_checkpoint_file: Union[Path,None],
-                 batch_size: int = 1,
-                 shuffle: bool = True,
                  show_bar: bool = True,
-                 disable_cuda: bool = False,
                  quiet: bool = False):
         self.model = model
+        self.model_device = model_device
         self.optimizer = optimizer
         self.criterion = criterion
         self.epochs = epochs
 
-        self.training_loader = DataLoader(training_set, shuffle=shuffle, batch_size=batch_size)
-        if validation_set:
-            self.validation_loader = DataLoader(validation_set, shuffle=shuffle, batch_size=batch_size)
-            self.best_mean_mcc = float("inf")
+        self.training_loader = training_loader
+        self.validation_loader = validation_loader
+        self.best_mean_mcc = None if not validation_loader else -1.
 
         self.log_file = log_file
         self.training_checkpoint_file = training_checkpoint_file
         self.validation_checkpoint_file = validation_checkpoint_file
-        self.disable_cuda = disable_cuda
         self.quiet = quiet
         self.show_bar = show_bar
 
-        self.data_device = data_device
-        self.model_device = model_device
-        self.model.to(model_device)
 
-
-    def log(self, message: str):
+    def log(self, message: str) -> None:
         if self.quiet:
             return
         if self.log_file:
@@ -68,8 +59,8 @@ class Train:
         logging.info(" " + message)
 
 
-    def run(self, resume: bool = False):
-        self.log("Starting training at " + str(datetime.datetime.now()))
+    def run(self, resume: bool = False) -> None:
+        self.log("Starting training at " + str(datetime.datetime.now()) + "\n")
             
         self.model.train()
         start_epoch = 0
@@ -91,17 +82,19 @@ class Train:
 
             train_loss_tot = 0.
             # inner_loop = tqdm(self.training_loader) if self.show_bar else self.training_loader
+
+            # TODO: copy multiple sequences at a time to GPU
             
             for seq, lab in self.training_loader:
-                seq_moved = seq.to(self.model_device)       
-                lab_moved = lab.to(self.model_device)
-                pred = self.model(seq_moved)
-                loss = self.criterion(pred, lab_moved)
+                seq = seq.to(self.model_device)       
+                lab = lab.to(self.model_device)
+                pred = self.model(seq)
+                loss = self.criterion(pred, lab)
                 train_loss_tot += loss
                 loss.backward()
                 self.optimizer.step()
                 self.optimizer.zero_grad()
-                del seq_moved, lab_moved, pred, loss
+                del seq, lab, pred, loss
             train_loss_mean = train_loss_tot / len(self.training_loader)
             state_dict = self.model.state_dict()
             torch.save({"epoch": epoch,
@@ -127,22 +120,20 @@ class Train:
         mean_f1 = 0.
         with torch.no_grad():
             for seq, lab in self.validation_loader:
-                if self.model_device != self.data_device:
-                    seq_moved = seq.to(self.model_device)       
-                    lab_moved = lab.to(self.model_device)
-                pred = self.model(seq_moved)
-                loss = self.criterion(pred, lab_moved)
-                pred_pair_map = tensor2pairmap(pred)
-                lab_pair_map = tensor2pairmap(lab_moved)
+                seq = seq.to(self.model_device)       
+                lab = lab.to(self.model_device)
+                pred = self.model(seq)
+                loss = self.criterion(pred, lab)
+                lab_pair_map, pred_pair_map = tensor2pairmap(lab), tensor2pairmap(pred)
                 scores = get_scores(pred_pair_map, lab_pair_map)
                 mean_mcc += scores[4]
                 mean_f1 += scores[5] 
                 mean_loss += loss
-                del seq_moved, lab_moved, pred, loss
+                del seq, lab, pred, loss
         mean_loss /= len(self.validation_loader)
         mean_f1 /= len(self.validation_loader)
         mean_mcc /= len(self.validation_loader) 
-        if mean_mcc < self.best_mean_mcc:
+        if mean_mcc > self.best_mean_mcc:
             self.best_mean_mcc = mean_mcc
             self.log(f"New optimum at epoch {epoch}")
             self.best_validation_loss = mean_loss
@@ -195,6 +186,9 @@ class Train:
                 training_set.to(data_device)
         else:
             raise ValueError("Invalid file type")
+        training_loader = DataLoader(training_set,
+                                     shuffle=args.shuffle,
+                                     batch_size=args.batch_size)
 
         if hasattr(args, "validation_file"):
             if args.validation_filetype == "bpseq-lst":
@@ -215,8 +209,11 @@ class Train:
                     validation_set.to(data_device)
             else:
                 raise ValueError("Invalid file type")
+            validation_loader = DataLoader(validation_set,
+                                           shuffle=args.shuffle,
+                                           batch_size=args.batch_size)
         else:
-            validation_set = None
+            validation_loader = None
 
         model = nn.Sequential(*[eval(layer) for layer in args.layers])
         model.to(model_device)
@@ -225,17 +222,13 @@ class Train:
 
         return cls(model=model, 
                    model_device=model_device,
-                   data_device=data_device,
                    optimizer=optimizer,
                    criterion=criterion,
                    epochs=args.epochs,
-                   training_set=training_set,
-                   validation_set=validation_set,
+                   training_loader=training_loader,
+                   validation_loader=validation_loader,
                    log_file=args.log_file,
                    training_checkpoint_file=args.training_checkpoint_file,
                    validation_checkpoint_file=args.validation_checkpoint_file,
-                   batch_size=args.batch_size,
-                   shuffle=args.shuffle,
                    show_bar=args.show_bar,
-                   disable_cuda=args.disable_cuda,
                    quiet=args.quiet)

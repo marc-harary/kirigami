@@ -3,7 +3,7 @@
 
 import torch
 from torch import nn
-from kirigami.nn.ResNet import ActDropNorm
+from kirigami.nn.resnet import ActDropNorm
 
 
 __all__ = ['BlockA', 'BlockB']

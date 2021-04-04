@@ -15,6 +15,7 @@ import kirigami.nn
 from kirigami._globals import *
 from kirigami.utils.data import BpseqDataset, EmbeddedDataset, StDataset
 from kirigami.utils.convert import *
+from kirigami.utils.process import *
 
 
 __all__ = ["Train"] 
@@ -123,6 +124,7 @@ class Train:
                 seq = seq.to(self.model_device)       
                 lab = lab.to(self.model_device)
                 pred = self.model(seq)
+                pred = binarize(pred, seq, canonicalize=False)
                 loss = self.criterion(pred, lab)
                 lab_pair_map, pred_pair_map = tensor2pairmap(lab), tensor2pairmap(pred)
                 scores = get_scores(pred_pair_map, lab_pair_map)

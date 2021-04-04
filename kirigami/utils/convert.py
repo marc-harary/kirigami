@@ -5,37 +5,22 @@ from typing import Tuple
 from collections import defaultdict, namedtuple, deque
 from operator import itemgetter
 from itertools import permutations
-
 import torch
-import munch
-
 from kirigami._globals import *
 
 
-__all__ = ["path2munch",
+__all__ = ["st2pairmap",
+           "dotbracket2pairmap",
+           "bpseq2pairmap",
+           "tensor2pairmap",
            "pairmap2tensor",
            "sequence2tensor",
            "label2tensor",
            "bpseq2tensor",
            "st2tensor",
-           "dotbracket2pairmap",
-           "tensor2pairmap",
            "tensor2sequence",
            "tensor2bpseq",
-           "bpseq2pairmap",
-           "st2pairmap",
-           "pairmap2bpseq",
-           "binarize",
-           "get_scores"]
-
-
-def path2munch(path: Path) -> munch.Munch:
-    """Reads .json file saved at PATH and returns `Munch` object"""
-    with open(path, "r") as f:
-        txt = f.read()
-    conf_json = json.loads(txt)
-    conf =  munch.munchify(conf_json)
-    return conf
+           "pairmap2bpseq"]
 
 
 def pairmap2tensor(pairs: PairMap, out_dim: int = 3) -> torch.Tensor:
@@ -55,7 +40,7 @@ def sequence2tensor(sequence: str) -> torch.Tensor:
     """Converts `FASTA` sequence to `torch.Tensor`"""
     sequence_copy = sequence.strip().upper()
     length = len(sequence_copy)
-    one_hot = torch.stack([BASE_DICT[char] for char in sequence_copy])
+    one_hot = torch.stack([BASES_CHAR_DICT[char] for char in sequence_copy])
     rows = one_hot.T
     rows = rows.unsqueeze(2)
     rows = rows.expand(-1, -1, length)
@@ -166,49 +151,6 @@ def pairmap2bpseq(sequence: str, pair_map: PairMap) -> str:
     return "".join(out_list)
 
 
-def binarize(ipt: torch.Tensor,
-             thres: float = .5,
-             diagonal: float = 0.,
-             min_dist: int = 4,
-             canonicalize: bool = True) -> torch.Tensor:
-    """Binarizes contact matrix from deep network"""
-    # mat = ipt.squeeze()
-    # length = mat.shape[0]
-    # assert mat.dim() == 2 and length == mat.shape[1], "Input tensor must be square"
-
-
-    # def filter_closure(base_pair, prob):
-    #     i, j = base_pair
-    #     not_too_close = (abs(i - j) >= 4)
-    #     not_too_low = prob >= thres
-    #     base_i, base_j = INV_BASE_DICT[i], INV_BASE_DICT[j]
-    #     canonical = ((base_i == "G" and base_j == "C") or
-    #                  (base_j == "G" and base_i == "C") or 
-    #                  (base_i == "A" and base_j == "U") or 
-    #                  (base_j == "A" and base_i == "U"))
-    #    canonical = canonical if canonicalize else True
-    #    return not_too_close and not_too_low and canonical
-
-    # base_pairs = permutations(range(length), 2) # get all base combinations
-    # probs = [mat[base_pair] for base_pair in base_pairs]
-    # idx_and_probs = zip(base_pairs, probs)
-    # sort(idx_and_probs, key=itemgetter(1))
-
-    # idx_dict = OrderedDict()
-    # for base_pair, prob in zip(base_pairs, probs):
-    #     if filter_closure(base_pair, prob): 
-    #         idx_dict[base_pair] = prob
-    #     
-    # while idx_dict:
-    #     idx_pair = idx_dict.pop()
-    #     i, j = val[0]
-    #     out[i,j], out[j,i] = 1., 1.
-    #     vals = list(filter(lambda val: not set((i,j)).intersection(set(val[0])), vals))
-
-    # out.fill_diagonal_(diagonal)
-    # return out
-
-
 def tensor2pairmap(ipt: torch.Tensor) -> PairMap:
     """Converts binarized contact matrix to `PairMap`"""
     mat = ipt.squeeze()
@@ -227,7 +169,7 @@ def tensor2sequence(ipt: torch.Tensor) -> str:
     chars = []
     for row in chars_embed:
         _, idx = torch.max(row, 0)
-        chars.append(BASES[idx])
+        chars.append(BASES_CHAR[idx])
     return "".join(chars)
 
 
@@ -236,26 +178,3 @@ def tensor2bpseq(sequence: torch.Tensor, label: torch.Tensor) -> str:
     sequence_str = tensor2sequence(sequence)
     label_pair_map = tensor2pairmap(label)
     return pairmap2bpseq(sequence_str, label_pair_map)
-
-
-def get_scores(pred_map: PairMap, ground_map: PairMap) -> Scores: 
-    """Returns various evaluative scores of predicted secondary structure"""
-    length = len(pred_map)
-    assert length == len(ground_map)
-    total = length * (length-1) / 2
-    pred_set = {pair for pair in pred_map.items() if pair[1] >= pair[0]}
-    ground_set = {pair for pair in ground_map.items() if pair[1] >= pair[0]}
-    pred_pairs, ground_pairs = len(pred_set), len(ground_set)
-    tp = 1. * len(pred_set.intersection(ground_set))
-    fp = len(pred_set) - tp
-    fn = len(ground_set) - tp
-    tn = total - tp - fp - fn
-    mcc = f1 = 0. 
-    if len(pred_set) != 0 and len(ground_set) != 0:
-        precision = tp / len(pred_set)
-        recall = tp / len(ground_set)
-        if tp > 0:
-            f1 = 2 / (1/precision + 1/recall)
-        if (tp+fp) * (tp+fn) * (tn+fp) * (tn+fn) > 0:
-            mcc = (tp*tn-fp*fn) / ((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))**.5
-    return Scores(tp, fp, fn, tn, mcc, f1, ground_pairs, pred_pairs)

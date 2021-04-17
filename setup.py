@@ -10,4 +10,6 @@ setup(name="kirigami",
       entry_points = {"console_scripts": ["kirigami = kirigami.__main__:main"]},
       # ext_modules=[CppExtension("kirigami.cpp_utils", ["kirigami/src/convert/convert.cpp"])],
       # cmdclass={"build_ext": BuildExtension}
+      ext_modules=[CppExtension("kirigami.cpp_utils", ["kirigami/src/binarize.cpp"])],
+      cmdclass={"build_ext": BuildExtension}
 )

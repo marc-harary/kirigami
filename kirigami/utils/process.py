@@ -2,43 +2,82 @@ from itertools import permutations
 from operator import itemgetter
 import torch
 from kirigami._globals import *
+from kirigami.utils.convert import tensor2sequence
 
 
-__all__ = ["binarize", "get_scores"]
+__all__ = ["bad_binarize", "get_scores"]
 
 
-def binarize(contact: torch.Tensor,
-             sequence: torch.Tensor,
-             thres: float = .5,
-             diagonal: float = 0.,
-             min_dist: int = 4,
-             canonicalize: bool = True) -> torch.Tensor:
+# def binarize(lab: torch.Tensor,
+#              seq: torch.Tensor,
+#              thres: float = .5,
+#              diagonal: float = 0.,
+#              min_dist: int = 4,
+#              canonicalize: bool = True) -> torch.Tensor:
+#     """Binarizes contact matrix from deep network"""
+#     lab_ = lab.squeeze()
+#     lab_flat = lab_.view(-1)
+#     seq_ = seq.squeeze()
+#     seq_ = seq_[:4,:,0].T.squeeze()
+#     length = seq_.shape[0]
+# 
+#     probs, idxs = torch.sort(lab_flat, descending=True)
+#     
+#     hit_pairs = []
+#     out = torch.zeros_like(lab_)
+#     out_flat = out.view(-1)
+# 
+#     for prob, idx in zip(probs, idxs):
+#         if prob < thres:
+#             continue
+#         i = int(idx / length)
+#         j = idx % length
+#         if abs(i - j) < min_dist or (j, i) in hit_pairs:
+#             continue
+#         if not canonicalize:
+#             hit_pairs.append((i,j))
+#             out[i,j] = out[j,i] = 1.
+#         else:
+#             pair_i = *(int(k) for k in seq_[i]),
+#             pair_j = *(int(k) for k in seq_[j]),
+#             if (pair_i, pair_j) in CANONICAL_TUPLES:
+#                 hit_pairs.append((i,j))
+#                 out[i,j] = out[j,i] = 1.
+# 
+#     out.fill_diagonal_(diagonal)
+#     while out.dim() < lab.dim():
+#         out.unsqueeze_(0)
+# 
+#     return out
+# 
+def bad_binarize(lab: torch.Tensor,
+                 seq: torch.Tensor,
+                 thres: float = .5,
+                 min_dist: int = 4,
+                 canonicalize: bool = True) -> torch.Tensor:
     """Binarizes contact matrix from deep network"""
-    contact_squeeze = contact.squeeze()
-    sequence_squeeze = sequence.squeeze()
-    sequence_squeeze = sequence_squeeze[:4,:,0].T.squeeze()
-    assert contact_squeeze.dim() == sequence_squeeze.dim() == 2
-    assert contact_squeeze.shape[0] == contact_squeeze.shape[1] == sequence_squeeze.shape[0] 
+    lab_ = lab.squeeze()
+    seq_str = tensor2sequence(seq)
+    L = len(seq_str)
 
-    out = torch.zeros_like(contact_squeeze)
+    pairs_probs = []
+    for i in range(L):
+        for j in range(i+min_dist, L):
+            prob = lab_[i,j]
+            if prob >= thres and seq_str[i]+seq_str[j] in CANONICAL_CHARS:
+                pairs_probs.append((prob,(i,j)))
 
-    pairs = list(permutations(range(contact_squeeze.shape[0]), 2))
-    probs = [contact_squeeze[pair] for pair in pairs]
-    pairs_probs = list(zip(pairs, probs))
-    pairs_probs.sort(key=itemgetter(1))
-
-    hit_pairs = []
-    for pair, prob in pairs_probs:
+    pairs_probs.sort(reverse=True)
+    out = torch.zeros((L,L), device=lab.device)
+    dot_bracket = L * ["."]
+    for prob, pair in pairs_probs:
         i, j = pair
-        pairs = tuple(sequence_squeeze[i].tolist()), tuple(sequence_squeeze[j].tolist())
-        if abs(i - j) >= min_dist and \
-           prob >= thres and \
-           (not canonicalize or pairs in CANONICALS_TENSOR) and (j, i) not in hit_pairs:
-            hit_pairs.append(pair)
-            out[i,j] = out[j,i] = 1.
+        if dot_bracket[i] != "." or dot_bracket[j] != ".":
+            continue
+        out[i,j] = out[j,i] = 1.
+        dot_bracket[i], dot_bracket[j] = "(", ")"
 
-    out.fill_diagonal_(diagonal)
-    while out.dim() < contact.dim():
+    while out.dim() < lab.dim():
         out.unsqueeze_(0)
 
     return out

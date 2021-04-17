@@ -1,7 +1,7 @@
 import json
 import re
 from pathlib import Path
-from typing import Tuple
+from typing import Tuple, OrderedDict
 from collections import defaultdict, namedtuple, deque
 from operator import itemgetter
 from itertools import permutations
@@ -40,7 +40,7 @@ def sequence2tensor(sequence: str) -> torch.Tensor:
     """Converts `FASTA` sequence to `torch.Tensor`"""
     sequence_copy = sequence.strip().upper()
     length = len(sequence_copy)
-    one_hot = torch.stack([BASES_CHAR_DICT[char] for char in sequence_copy])
+    one_hot = torch.stack([CHAR2TENSOR[char] for char in sequence_copy])
     rows = one_hot.T
     rows = rows.unsqueeze(2)
     rows = rows.expand(-1, -1, length)
@@ -158,7 +158,7 @@ def tensor2pairmap(ipt: torch.Tensor) -> PairMap:
     values, js = torch.max(mat, 1)
     js[values == 0.] = NO_CONTACT
     js_ints = map(int, js)
-    pair_map = dict(enumerate(js_ints))
+    pair_map = OrderedDict(enumerate(js_ints))
     return pair_map
 
 
@@ -169,7 +169,7 @@ def tensor2sequence(ipt: torch.Tensor) -> str:
     chars = []
     for row in chars_embed:
         _, idx = torch.max(row, 0)
-        chars.append(BASES_CHAR[idx])
+        chars.append(BASE_CHARS[idx])
     return "".join(chars)
 
 

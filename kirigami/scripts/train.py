@@ -16,6 +16,7 @@ from kirigami._globals import *
 from kirigami.utils.data import BpseqDataset, EmbeddedDataset, StDataset
 from kirigami.utils.convert import *
 from kirigami.utils.process import *
+from kirigami import binarize
 
 
 __all__ = ["Train"] 
@@ -45,19 +46,18 @@ class Train:
         self.validation_loader = validation_loader
         self.best_mean_mcc = None if not validation_loader else -1.
 
-        self.log_file = log_file
         self.training_checkpoint_file = training_checkpoint_file
         self.validation_checkpoint_file = validation_checkpoint_file
         self.quiet = quiet
         self.show_bar = show_bar
+        self.log_file = log_file
+        if self.log_file:
+            logging.basicConfig(filename=self.log_file, level=logging.INFO)
 
 
     def log(self, message: str) -> None:
-        if self.quiet:
-            return
-        if self.log_file:
-            logging.basicConfig(filename=self.log_file, level=logging.INFO)
-        logging.info(" " + message)
+        if not self.quiet:
+            logging.info(" " + message)
 
 
     def run(self, resume: bool = False) -> None:
@@ -78,14 +78,10 @@ class Train:
         outer_loop = tqdm(range_iterator) if self.show_bar else range_iterator
 
         for epoch in outer_loop:
-            start = datetime.datetime.now()
-            self.log(f"Starting epoch {epoch} at {start}")
-
-            train_loss_tot = 0.
-            # inner_loop = tqdm(self.training_loader) if self.show_bar else self.training_loader
-
             # TODO: copy multiple sequences at a time to GPU
-            
+            start = datetime.datetime.now()
+            self.log(f"Starting epoch {epoch} at " + str(start))
+            train_loss_tot = 0.
             for seq, lab in self.training_loader:
                 seq = seq.to(self.model_device)       
                 lab = lab.to(self.model_device)
@@ -95,7 +91,7 @@ class Train:
                 loss.backward()
                 self.optimizer.step()
                 self.optimizer.zero_grad()
-                del seq, lab, pred, loss
+            del seq, lab, pred, loss
             train_loss_mean = train_loss_tot / len(self.training_loader)
             state_dict = self.model.state_dict()
             torch.save({"epoch": epoch,
@@ -104,17 +100,17 @@ class Train:
                         "loss": train_loss_mean},
                         self.training_checkpoint_file)
 
-            if self.validation_loader:
-                self.validate(epoch)
-
             end = datetime.datetime.now()
             delta = end - start
+            if self.validation_loader:
+                self.validate(epoch)
             self.log(f"Mean training loss for epoch {epoch}: {train_loss_mean}")
-            self.log(f"Time for epoch {epoch}: {delta.seconds} s\n")
-                         
+            self.log(f"Training time for epoch {epoch}: {delta.seconds} s\n")
+
 
     def validate(self, epoch: int) -> None:
         # TODO: include dynamic programming here
+        start = datetime.datetime.now()
         self.model.eval()
         mean_loss = 0.
         mean_mcc = 0.
@@ -124,20 +120,20 @@ class Train:
                 seq = seq.to(self.model_device)       
                 lab = lab.to(self.model_device)
                 pred = self.model(seq)
-                pred = binarize(pred, seq, canonicalize=False)
+                pred = binarize(pred, seq, thres=.5, symmetrize=False, canonicalize=True)
                 loss = self.criterion(pred, lab)
                 lab_pair_map, pred_pair_map = tensor2pairmap(lab), tensor2pairmap(pred)
                 scores = get_scores(pred_pair_map, lab_pair_map)
                 mean_mcc += scores[4]
                 mean_f1 += scores[5] 
                 mean_loss += loss
-                del seq, lab, pred, loss
+            del seq, lab, pred, loss
         mean_loss /= len(self.validation_loader)
         mean_f1 /= len(self.validation_loader)
         mean_mcc /= len(self.validation_loader) 
         if mean_mcc > self.best_mean_mcc:
-            self.best_mean_mcc = mean_mcc
             self.log(f"New optimum at epoch {epoch}")
+            self.best_mean_mcc = mean_mcc
             self.best_validation_loss = mean_loss
             torch.save({"epoch": epoch,
                         "model_state_dict": self.model.state_dict(),
@@ -146,9 +142,12 @@ class Train:
                         "mean_f1": mean_f1,
                         "loss": self.best_validation_loss},
                        self.validation_checkpoint_file)
+        end = datetime.datetime.now()
+        delta = end - start
         self.log(f"Mean validation loss for epoch {epoch}: {mean_loss}")
         self.log(f"Mean MCC for epoch {epoch}: {mean_mcc}")
         self.log(f"Mean F1 for epoch {epoch}: {mean_f1}")
+        self.log(f"Validation time for epoch {epoch}: {delta.seconds} s")
         self.model.train()
 
 

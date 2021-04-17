@@ -6,16 +6,9 @@
 #define BASE_TENSORS torch::eye(4)
 #define BASES "AUGC"
 #define PAIRS std::set<std::string>({"AU", "UA", "CG", "GC", "GA", "AG"})
-#define CANONICAL(i,j) PAIRS.find({i,j}) != PAIRS.end()
-#define COMP_PAIR(i,j) i.first < j.first
 
 using namespace torch::indexing;
 using PairProb = std::pair<double,std::pair<int,int>>;
-
-
-bool compPair(PairProb i, PairProb j) {
-    return i.first > j.first;
-}
 
 
 char tensor2char(torch::Tensor a) {
@@ -69,7 +62,10 @@ torch::Tensor binarize(torch::Tensor lab,
     for (int i = 0; i < L; i++) {
         for (int j = i + minDist; j < L; j++) {
             prob = lab_[i][j].item<double>();
-            if (prob >= thres && CANONICAL(seqStr[i], seqStr[j])) {
+            if (prob >= thres) {
+                if (canonicalize && PAIRS.find(seqStr[i],seqStr[j]) == PAIRS.end()) {
+                    continue;
+                }
                 pairProbs[numPairs++] = {prob, {i,j}};
             }
         }
@@ -80,7 +76,6 @@ torch::Tensor binarize(torch::Tensor lab,
 
     auto out = torch::zeros_like(lab_, lab.device());
     std::string dotBracket(L, '.');
-
 
     std::pair<int,int> idxs;
     int j, k;
@@ -105,6 +100,7 @@ torch::Tensor binarize(torch::Tensor lab,
 
     return out;
 }
+
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("binarize",

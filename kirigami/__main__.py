@@ -73,17 +73,38 @@ def main():
                       default=1,
                       help="batch size for training and validation sets")
     data.add_argument("--batch-load",
+                      default=False,
                       action="store_true",
                       help="pre-load and pre-embed all files prior to training")
-    data.add_argument("--data-device",
+    data.add_argument("--max-length",
+                      default=512,
+                      type=int,
+                      help="maximum length to which all sequenes will be padded")
+    data.add_argument("--num-workers",
+                      default=0,
+                      type=int,
+                      help="number of workers for data loader")
+    data.add_argument("--training-data-device",
                       required=True,
                       choices=["cpu","gpu"],
-                      help="store files on CPU but train on GPU")
+                      help="store training files on CPU but train on GPU")
+    data.add_argument("--validation-data-device",
+                      required=True,
+                      choices=["cpu","gpu"],
+                      help="store validation files on CPU and validate on GPU")
 
+    parser_train.add_argument("--mixed-precision",
+                              action="store_true",
+                              default=False,
+                              help="training precision")
     parser_train.add_argument("--epochs",
                               type=int,
                               required=True,
                               help="total epochs for training")
+    parser_train.add_argument("--iters-to-accumulate",
+                              type=int,
+                              default=1,
+                              help="number of batches between each optimizer step")
     parser_train.add_argument("--criterion",
                               type=str,
                               required=True,
@@ -105,7 +126,29 @@ def main():
                        required=True,
                        choices=["cpu","gpu"],
                        help="store model on CPU or GPU") 
+    model.add_argument("--checkpoint-gradients",
+                       default=False,
+                       action="store_true",
+                       help="enabled gradient checkpointing") 
+    model.add_argument("--segments",
+                       default=1,
+                       type=int,
+                       help="chunks in model for gradient checkpointing") 
 
+    post_processing = parser_train.add_argument_group()
+    post_processing.add_argument("--binarize",
+                                 default=False,
+                                 action="store_true",
+                                 help="binarize and threshold matrix")
+    post_processing.add_argument("--thres",
+                                 default=0.5,
+                                 type=float,
+                                 help="threshold probability for binarization")
+    post_processing.add_argument("--canonicalize",
+                                 default=False,
+                                 action="store_true",
+                                 help="filter for only Wobble and W-C pairs") 
+                                
     parser_train.add_argument("--training-checkpoint-file",
                               required=True,
                               type=Path,

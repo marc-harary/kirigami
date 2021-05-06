@@ -148,6 +148,11 @@ def main():
                                  default=False,
                                  action="store_true",
                                  help="filter for only Wobble and W-C pairs") 
+    post_processing.add_argument("--symmetrize",
+                                 default=False,
+                                 action="store_true",
+                                 help="make output label matrix symmetrical")
+    
                                 
     parser_train.add_argument("--training-checkpoint-file",
                               required=True,
@@ -211,33 +216,42 @@ def main():
 
 
     parser_embed = subparsers.add_parser("embed", help="embed various files")
-    parser_embed.add_argument("--file-type", "-f",
+    parser_embed.add_argument("--file-type",
                               choices=["bpseq", "st"],
                               required=True,
                               type=str,
-                              help="Type of file to embed")
-    parser_embed.add_argument("--in-list", "-i",
-                              required=True,
+                              help="type of file to embed")
+    embed_input = parser_embed.add_mutually_exclusive_group()
+    embed_input.add_argument("--in-directory",
+                             type=Path,
+                             help="directory of files to embed")
+    embed_input.add_argument("--in-list",
+                             type=Path,
+                             help="path to list file")
+    parser_embed.add_argument("--out-file",
+                              default="out.pt",
                               type=Path,
-                              help="path to input list file")
-    parser_embed.add_argument("--out-directory", "-o",
-                              required=True,
-                              default=".",
-                              type=Path,
-                              help="path to output directory of embedded files")
-    parser_embed.add_argument("--log-file", "-l",
-                              default=None,
-                              help="path to log file") 
-    parser_embed.add_argument("--quiet", "-q",
+                              help="path to output file")
+    parser_embed.add_argument("--tensor-dim",
+                              type=int,
+                              default=3, 
+                              help="dimensions of singleton tensor")
+    parser_embed.add_argument("--concatenate",
                               action="store_true",
-                              help="quiet") 
-#     parser_embed.set_defaults(func = lambda args: evaluate(file_type=args.file_type,
-#                                                            in_list=args.in_list,
-#                                                            out_dir=args.out_dir,
-#                                                            log_file=args.log_file,
-#                                                            quiet=args.quiet))
-# 
-# 
+                              help="concatenate singletons")
+    parser_embed.add_argument("--pad-length",
+                              type=int,
+                              default=512,
+                              help="size to which to pad all sequences")
+    parser_embed.add_argument("--device",
+                              choices=["cpu", "cuda"],
+                              type=str,
+                              help="device to store data")
+    parser_embed.add_argument("--sparse",
+                              action="store_true",
+                              help="embed tensors as sparse")
+    parser_embed.set_defaults(func = lambda namespace: Embed.from_namespace(namespace).run())
+    
     args = parser.parse_args()
     args.func(args)
 

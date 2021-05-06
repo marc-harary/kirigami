@@ -1,27 +1,35 @@
-from typing import Tuple
+from typing import Optional, Tuple, List
 import torch
 from torch import nn
 from torch.nn import *
 
 
-__all__ = ["ActDropNorm"]
+__all__ = ["ActDropNorm", "ResNetBlock", "ResNet"]
 
 
 class ActDropNorm(nn.Module):
-    """Performs activation, dropout, and batch normalization for resnet blocks"""
+    """performs activation, dropout, and batch normalization for resnet blocks"""
+    
+    act: Module
+    drop: Module
+    norm: Module 
+
     def __init__(self,
                  p: float,
                  activation: str,
                  norm_type: str,
-                 shape: Tuple[int,int,int]) -> None:
+                 n_channels: int,
+                 length: Optional[int]) -> None:
         super().__init__()
         activation_class = eval(activation)
         self.act = activation_class()
-        self.drop = torch.nn.Dropout2d(p=p)
+        self.drop = nn.Dropout2d(p=p)
         if norm_type == "LayerNorm":
-            self.norm = torch.nn.LayerNorm(shape)
+            self.norm = nn.LayerNorm((n_channels, length, length))
         elif norm_type == "BatchNorm2d":
-            self.norm = torch.nn.BatchNorm2d(shape[0])
+            self.norm = nn.BatchNorm2d(n_channels)
+        else:
+            self.norm = nn.InstanceNorm2d(n_channels)
 
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
         out = ipt
@@ -33,7 +41,7 @@ class ActDropNorm(nn.Module):
 
 
 class ResNetBlock(nn.Module):
-    """Implements ResNet unit"""
+    """implements ResNet unit"""
 
     resnet: bool
     conv1: Module
@@ -43,30 +51,35 @@ class ResNetBlock(nn.Module):
 
     def __init__(self,
                  p: float,
-                 activation: str = "ReLU",
-                 norm_type: str = "LayerNorm",
-                 shape: Tuple[int,int,int] = (8, 512, 512), 
-                 kernel_size1: int = 3,
-                 kernel_size2: int = 5,
-                 resnet: bool = True):
+                 dilations: Tuple[int,int],
+                 kernel_sizes: Tuple[int],
+                 activation: str,
+                 norm_type: str,
+                 length: Optional[int],
+                 n_channels: int,
+                 resnet: bool = True) -> None:
         super().__init__()
         self.resnet = resnet
         self.conv1 = nn.Conv2d(in_channels=n_channels,
                                out_channels=n_channels,
-                               kernel_size=kernel_size1,
-                               padding=kernel_size1//2)
+                               kernel_size=kernel_sizes[0],
+                               dilation=dilations[0],
+                               padding=self.get_padding(dilations[0], kernel_sizes[0]))
         self.act_drop_norm1 = ActDropNorm(p=p,
                                           activation=activation,
                                           norm_type=norm_type,
-                                          shape=shape)
+                                          n_channels=n_channels,
+                                          length=length)
         self.conv2 = nn.Conv2d(in_channels=n_channels,
                                out_channels=n_channels,
-                               kernel_size=kernel_size2,
-                               padding=kernel_size2//2)
+                               kernel_size=kernel_sizes[1],
+                               dilation=dilations[1],
+                               padding=self.get_padding(dilations[1], kernel_sizes[1]))
         self.act_drop_norm2 = ActDropNorm(p=p,
                                           activation=activation,
                                           norm_type=norm_type,
-                                          shape=shape)
+                                          n_channels=n_channels,
+                                          length=length)
 
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
         out = ipt
@@ -78,30 +91,39 @@ class ResNetBlock(nn.Module):
             out += ipt
         return out
 
+    @staticmethod
+    def get_padding(dilation: int, kernel_size: int) -> int:
+        """returns padding needed for 'same'-like feature in TensorFlow"""
+        return round((dilation * (kernel_size - 1)) / 2)
+
 
 class ResNet(nn.Module):
-    """Implements ResNet"""
+    """implements ResNet"""
     
     blocks: Sequential
 
     def __init__(self,
                  n_blocks: int,
-                 p: float,
+                 p: float = 0.5,
+                 dilations: Optional[List[int]] = None,
+                 kernel_sizes: Tuple[int,int] = (3,5),
                  activation: str = "ReLU",
-                 norm_type: str = "LayerNorm",
-                 shape: Tuple[int,int,int] = (8, 512, 512), 
-                 kernel_size1: int = 3,
-                 kernel_size2: int = 5,
+                 norm_type: str = "BatchNorm2d",
+                 n_channels: int = 8,
+                 length: Optional[int] = None,  
                  resnet: bool = True) -> None:
         super().__init__()
         block_list = []
-        for i in range(self.n_blocks):
+        dilations = dilations or 2*n_blocks*[0]
+        assert len(dilations) == 2*n_blocks, "Must pass in two dilations per block!"
+        for i in range(n_blocks):
             block =  ResNetBlock(p=p,
+                                 dilations=dilations[2*i:2*(i+1)],
+                                 kernel_sizes=kernel_sizes,
                                  activation=activation,
                                  norm_type=norm_type,
-                                 shape=shape,
-                                 kernel_size1=kernel_size1,
-                                 kernel_size2=kernel_size2,
+                                 length=length,
+                                 n_channels=n_channels,
                                  resnet=resnet) 
             block_list.append(block)
         self.blocks = Sequential(*block_list) 

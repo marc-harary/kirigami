@@ -2,7 +2,7 @@ import os
 import time
 import logging
 import datetime
-from typing import Union, Callable, List, Dict
+from typing import Union, Callable, List, Dict, Optional
 from pathlib import Path
 import gc
 
@@ -48,9 +48,11 @@ class Train:
     binarize: bool
     thres: float
     canonicalize: bool
+    symmetrize: bool
     show_bar: bool
     quiet: bool
-    best_mean_mcc: float
+    best_mcc: Optional[float]
+    best_loss: Optional[float]
     logs: List[Dict]
     hooks: List[torch.utils.hooks.RemovableHandle]
     
@@ -73,6 +75,7 @@ class Train:
                  binarize: bool = True,
                  thres: float = 0.5,
                  canonicalize: bool = True,
+                 symmetrize: bool = True,
                  show_bar: bool = True,
                  quiet: bool = False) -> None:
         self.model = model
@@ -90,11 +93,13 @@ class Train:
         self.training_loader = training_loader
         self.validation_loader = validation_loader
         self.validation_device = validation_device
-        self.best_mean_mcc = None if not validation_loader else -1.
+        self.best_mcc = None if not validation_loader else -1.
+        self.best_loss = None if not validation_loader else float("inf")
 
         self.binarize = binarize
         self.thres = thres
         self.canonicalize = canonicalize
+        self.symmetrize = symmetrize
 
         self.training_checkpoint_file = training_checkpoint_file
         self.validation_checkpoint_file = validation_checkpoint_file
@@ -104,10 +109,10 @@ class Train:
     
         self.logs = []
         self.hooks = []
-        for idx, module in enumerate(self.model.modules()):
-            self.hooks.append(module.register_forward_pre_hook(make_hook(self.logs, idx, "pre")))
-            self.hooks.append(module.register_forward_hook(make_hook(self.logs, idx, "fwd")))
-            self.hooks.append(module.register_backward_hook(make_hook(self.logs, idx, "bwd")))
+        # for idx, module in enumerate(self.model.modules()):
+        #     self.hooks.append(module.register_forward_pre_hook(make_hook(self.logs, idx, "pre")))
+        #     self.hooks.append(module.register_forward_hook(make_hook(self.logs, idx, "fwd")))
+        #     self.hooks.append(module.register_backward_hook(make_hook(self.logs, idx, "bwd")))
 
         self.quiet = quiet
         self.show_bar = show_bar
@@ -127,12 +132,12 @@ class Train:
         start_epoch = 0
 
         if resume:
-            checkpoint = torch.load(self.checkpoint_file)
+            checkpoint = torch.load(self.validation_checkpoint_file)
             self.model.load_state_dict(checkpoint["model_state_dict"])
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             start_epoch = checkpoint["epoch"]
             loss = checkpoint["loss"]
-            self.log(f"Resuming at epoch {epoch} with loss {loss}")
+            self.log(f"Resuming at epoch {start_epoch} with loss {loss}")
 
         range_iterator = range(start_epoch, self.epochs)
         outer_loop = tqdm(range_iterator) if self.show_bar else range_iterator
@@ -145,12 +150,17 @@ class Train:
             length = len(self.training_loader)
             train_loss_tot = 0.
             for i, (seq, lab) in tqdm(enumerate(self.training_loader)):
+                seq_copy = concatenate_batch(seq).to(self.model_device).float()
+                lab_copy = lab.to(self.model_device).float()
                 with autocast(enabled=self.mixed_precision):
                     if self.checkpoint_gradients:
-                        pred = torch.utils.checkpoint.checkpoint_sequential(self.model, self.segments, seq.to(self.model_device).float())
+                        # pred = torch.utils.checkpoint.checkpoint_sequential(self.model, self.segments, seq.to(self.model_device).float())
+                        pred = torch.utils.checkpoint.checkpoint_sequential(self.model, self.segments, seq_copy)
                     else:
-                        pred = self.model(seq.to(self.model_device).float()) 
-                    loss = self.criterion(pred, lab.to(self.model_device).float())
+                        # pred = self.model(seq.to(self.model_device).float()) 
+                        pred = self.model(seq_copy)
+                    # loss = self.criterion(pred, lab.to(self.model_device).float())
+                    loss = self.criterion(pred, lab_copy)
                     loss /= self.iters_to_accumulate
                 scaler.scale(loss).backward()
                 if i % self.iters_to_accumulate == 0:
@@ -167,51 +177,88 @@ class Train:
                         self.training_checkpoint_file)
             end = datetime.datetime.now()
             delta = end - start
+            self.log(f"Training time for epoch {epoch}: {delta.seconds} s")
+            self.log(f"Mean training loss for epoch {epoch}: {train_loss_mean}")
             if self.validation_loader:
                 self.validate(epoch)
-            self.log(f"Mean training loss for epoch {epoch}: {train_loss_mean}")
-            self.log(f"Training time for epoch {epoch}: {delta.seconds} s")
             self.log("Memory allocated: " + str(torch.cuda.memory_allocated() / 2**20))
             self.log("Memory cached: " + str(torch.cuda.memory_cached() / 2**20) + "\n")
 
 
     def validate(self, epoch: int) -> None:
         start = datetime.datetime.now()
-        mean_loss = 0.
-        mean_mcc = 0.
-        mean_f1 = 0.
+        self.model.eval()
+
+        n_batch = len(self.validation_loader)
+        raw_mean_loss = raw_mean_mcc = raw_mean_f1 = raw_mean_pairs = 0.
+        bin_mean_loss= bin_mean_mcc = bin_mean_f1 = bin_mean_pairs = 0. if self.binarize else None
+        mean_ground_pairs = 0
+
         with torch.no_grad():
-            for seq, lab in self.validation_loader:
-                pred = self.model(seq.to(self.model_device).float())
+            for i, (seq, lab) in enumerate(self.validation_loader):
+                seq_length = seq.sum().item()
+                seq_copy = concatenate_batch(seq).to(self.model_device).float()
+                lab_copy = lab.to(self.model_device).float()
+                lab_pair_map = dense2pairmap(lab, seq_length=seq_length)
+
+                raw_pred = self.model(seq_copy)
+                raw_loss = self.criterion(raw_pred, lab_copy)
+                if isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
+                    raw_pred = torch.nn.functional.sigmoid(raw_pred) 
+                raw_pair_map = dense2pairmap(raw_pred, seq_length=seq_length)
+                raw_scores = get_scores(raw_pair_map, lab_pair_map)
+                raw_mean_mcc += raw_scores.mcc / n_batch
+                raw_mean_f1 += raw_scores.f1 / n_batch
+                raw_mean_pairs += raw_scores.pred_pairs / n_batch
+                raw_mean_loss += raw_loss.item() / n_batch
+
+                mean_ground_pairs += raw_scores.ground_pairs / n_batch
+
                 if self.binarize:
-                    pred = binarize(pred, seq, thres=self.thres, symmetrize=False,
-                                    canonicalize=self.canonicalize)
-                loss = self.criterion(pred, lab.to(self.model_device).float())
-                lab_pair_map, pred_pair_map = dense2pairmap(lab), dense2pairmap(pred)
-                scores = get_scores(pred_pair_map, lab_pair_map)
-                mean_mcc += scores[4]
-                mean_f1 += scores[5] 
-                mean_loss += loss.item()
-        mean_loss /= len(self.validation_loader)
-        mean_f1 /= len(self.validation_loader)
-        mean_mcc /= len(self.validation_loader) 
-        if mean_mcc > self.best_mean_mcc:
+                    bin_pred = binarize(seq,
+                                        raw_pred,
+                                        max_pad=512,
+                                        thres=self.thres,
+                                        symmetrize=self.symmetrize,
+                                        canonicalize=self.canonicalize)
+                    bin_loss = self.criterion(bin_pred, lab_copy)
+                    bin_pair_map = dense2pairmap(bin_pred, seq_length=seq_length)
+                    bin_scores = get_scores(bin_pair_map, lab_pair_map)
+                    bin_mean_mcc += bin_scores.mcc / n_batch
+                    bin_mean_f1 += bin_scores.f1 / n_batch
+                    bin_mean_pairs += bin_scores.pred_pairs / n_batch
+                    bin_mean_loss += bin_loss.item() / n_batch
+
+        better_mcc = max(raw_mean_mcc, bin_mean_mcc) 
+        better_loss = min(raw_mean_loss, bin_mean_loss)
+
+        # if better_mean_loss < self.best_loss:
+        if better_mcc > self.best_mcc:
             self.log(f"New optimum at epoch {epoch}")
-            self.best_mean_mcc = mean_mcc
-            self.best_validation_loss = mean_loss
+            self.best_mcc = better_mcc
+            self.best_loss = min(self.best_loss, better_loss)
             torch.save({"epoch": epoch,
                         "model_state_dict": self.model.state_dict(),
                         "optimizer_state_dict": self.optimizer.state_dict(),
-                        "mean_mcc": mean_mcc,
-                        "mean_f1": mean_f1,
-                        "loss": self.best_validation_loss},
+                        "raw_mean_loss": raw_mean_loss,
+                        "raw_mean_mcc": raw_mean_mcc,
+                        "raw_mean_f1": raw_mean_f1,
+                        "raw_mean_pred_pairs": raw_mean_pairs,
+                        "bin_mean_loss": bin_mean_loss,
+                        "bin_mean_mcc": bin_mean_mcc,
+                        "bin_mean_f1": bin_mean_f1,
+                        "bin_mean_pred_pairs": bin_mean_pairs,
+                        "best_loss": self.best_loss},
                        self.validation_checkpoint_file)
         end = datetime.datetime.now()
         delta = end - start
-        self.log(f"Mean MCC for epoch {epoch}: {mean_mcc}")
-        self.log(f"Mean F1 for epoch {epoch}: {mean_f1}")
-        self.log(f"Mean validation loss for epoch {epoch}: {mean_loss}")
         self.log(f"Validation time for epoch {epoch}: {delta.seconds} s")
+        self.log(f"Mean raw validation loss for epoch {epoch}: {raw_mean_loss}")
+        self.log(f"Mean raw MCC for epoch {epoch}: {raw_mean_mcc}")
+        self.log(f"Mean raw F1 for epoch {epoch}: {raw_mean_f1}")
+        self.log(f"Mean binarized validation loss for epoch {epoch}: {bin_mean_loss}")
+        self.log(f"Mean binarized MCC for epoch {epoch}: {bin_mean_mcc}")
+        self.log(f"Mean binarized F1 for epoch {epoch}: {bin_mean_f1}")
         self.model.to(self.model_device)
         self.model.train()
 
@@ -318,5 +365,6 @@ class Train:
                    binarize=args.binarize,
                    thres=args.thres,
                    canonicalize=args.canonicalize,
+                   symmetrize=args.symmetrize,
                    checkpoint_gradients=args.checkpoint_gradients,
                    quiet=args.quiet)

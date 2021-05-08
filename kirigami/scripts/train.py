@@ -221,7 +221,10 @@ class Train:
                                         thres=self.thres,
                                         symmetrize=self.symmetrize,
                                         canonicalize=self.canonicalize)
-                    bin_loss = self.criterion(bin_pred, lab_copy)
+                    if isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
+                        bin_loss = torch.nn.functional.binary_cross_entropy(bin_pred, lab_copy)
+                    else:
+                        bin_loss = self.criterion(bin_pred, lab_copy)
                     bin_pair_map = dense2pairmap(bin_pred, seq_length=seq_length)
                     bin_scores = get_scores(bin_pair_map, lab_pair_map)
                     bin_mean_mcc += bin_scores.mcc / n_batch
@@ -240,6 +243,7 @@ class Train:
             torch.save({"epoch": epoch,
                         "model_state_dict": self.model.state_dict(),
                         "optimizer_state_dict": self.optimizer.state_dict(),
+                        "mean_ground_pairs": mean_ground_pairs,
                         "raw_mean_loss": raw_mean_loss,
                         "raw_mean_mcc": raw_mean_mcc,
                         "raw_mean_f1": raw_mean_f1,
@@ -253,12 +257,15 @@ class Train:
         end = datetime.datetime.now()
         delta = end - start
         self.log(f"Validation time for epoch {epoch}: {delta.seconds} s")
-        self.log(f"Mean raw validation loss for epoch {epoch}: {raw_mean_loss}")
-        self.log(f"Mean raw MCC for epoch {epoch}: {raw_mean_mcc}")
-        self.log(f"Mean raw F1 for epoch {epoch}: {raw_mean_f1}")
-        self.log(f"Mean binarized validation loss for epoch {epoch}: {bin_mean_loss}")
-        self.log(f"Mean binarized MCC for epoch {epoch}: {bin_mean_mcc}")
-        self.log(f"Mean binarized F1 for epoch {epoch}: {bin_mean_f1}")
+        self.log(f"Raw mean validation loss for epoch {epoch}: {raw_mean_loss}")
+        self.log(f"Raw mean MCC for epoch {epoch}: {raw_mean_mcc}")
+        self.log(f"Raw mean F1 for epoch {epoch}: {raw_mean_f1}")
+        self.log(f"Raw mean predicted pairs for epoch {epoch}: {raw_mean_pred_pairs}")
+        self.log(f"Binarized mean validation loss for epoch {epoch}: {bin_mean_loss}")
+        self.log(f"Binarized mean MCC for epoch {epoch}: {bin_mean_mcc}")
+        self.log(f"Binarized mean F1 for epoch {epoch}: {bin_mean_f1}")
+        self.log(f"Binarized mean predicted pairs for epoch {epoch}: {bin_mean_pred_pairs}")
+        self.log(f"Actual mean pairs: {mean_ground_pairs}")
         self.model.to(self.model_device)
         self.model.train()
 

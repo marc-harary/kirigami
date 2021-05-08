@@ -2,8 +2,8 @@
 #include <iostream>
 #include <algorithm>
 #include <vector>
+#include <limits.h>
 
-#define BASE_TENSORS torch::eye(4)
 #define BASES "AUGC"
 #define PAIRS std::set<std::string>({"AU", "UA", "CG", "GC", "GA", "AG"})
 
@@ -11,87 +11,75 @@ using namespace torch::indexing;
 using PairProb = std::pair<double,std::pair<int,int>>;
 
 
-char tensor2char(torch::Tensor a) {
-    auto a_ = a.squeeze();
-    a_ = a_.to(BASE_TENSORS[0].device());
-    if (torch::equal(a_, BASE_TENSORS[0])) {
-        return 'A';
-    } else if (torch::equal(a_, BASE_TENSORS[1])) {
-        return 'U';
-    } else if (torch::equal(a_, BASE_TENSORS[2])) {
-        return 'C';
-    } else if (torch::equal(a_, BASE_TENSORS[3])) {
-        return 'G';
-    } else {
-       throw std::invalid_argument("Base not valid");
-    } 
-}
-
-
-std::string tensor2string(torch::Tensor sequence) {
-    auto seq = sequence.squeeze();
-    seq = seq.index({Slice(0,4,1), Slice(), 0});
-    seq = seq.transpose(0, 1);
-    int L = seq.size(0);
-    std::string out(L, ' ');
-    for (int i = 0; i < L; i++) {
-        out[i] = tensor2char(seq[i]);
+std::string dense2sequence(torch::Tensor seq) {
+    auto seq_ = seq.squeeze();
+    int totalLength = seq_.size(1);
+    int seqLength = seq_.sum().item<int>();
+    int beg = (totalLength - seqLength) / 2;
+    int end = beg + seqLength;
+    auto outTuple = at::max(seq_.index({Slice(), Slice(beg,end)}), 0);
+    std::string out(seqLength, ' ');
+    for (int i = 0; i < seqLength; i++) {
+        out[i] = BASES[i];
     }
     return out;
 }
         
 
-torch::Tensor binarize(torch::Tensor lab,
-                       torch::Tensor seq,
-                       double thres = 0.5,
+torch::Tensor binarize(torch::Tensor seq,
+                       torch::Tensor lab,
                        int minDist = 4,
+                       int thresPairs = INT_MAX,
+                       double thresProb = 0.0,
                        bool symmetrize = true,
                        bool canonicalize = true) {
     auto lab_ = lab.squeeze();
     if (symmetrize) {
-        lab_ += lab_.transpose(0, 1);
+        lab_ += lab_.transpose(0, 1).clone();
         lab_ /= 2;
     }
-    std::string seqStr = tensor2string(seq);
 
-    int L = seqStr.size();
-    PairProb pairProbs[(L-minDist) * (L-minDist+1) / 2];
+    std::string seqStr = dense2sequence(seq);
+    int seqLength = seqStr.size();
+    int maxSize = lab_.size(0);
+    int beg = (maxSize - seqLength) / 2;
+    int end = beg + seqLength;
 
-    float prob;
+    double prob;
     int numPairs = 0;
-    for (int i = 0; i < L; i++) {
-        for (int j = i + minDist; j < L; j++) {
+    PairProb pairProbs[(seqLength-minDist) * (seqLength-minDist+1) / 2];
+    for (int i = beg; i < end; i++) {
+        for (int j = i + minDist; j < end; j++) {
             prob = lab_[i][j].item<double>();
-            if (prob >= thres) {
-                if (canonicalize && PAIRS.find(seqStr[i],seqStr[j]) == PAIRS.end()) {
-                    continue;
-                }
+            if (prob >= thresProb && (!canonicalize || PAIRS.find({seqStr[i-beg],seqStr[j-beg]}) != PAIRS.end())) {
                 pairProbs[numPairs++] = {prob, {i,j}};
             }
         }
     }
+
     std::sort(pairProbs, pairProbs+numPairs, [](PairProb i, PairProb j) {
         return i.first > j.first;
     });
 
-    auto out = torch::zeros_like(lab_, lab.device());
-    std::string dotBracket(L, '.');
+    auto out = torch::zeros({maxSize, maxSize}, lab.device());
+    std::string dotBracket(seqLength, '.');
 
     std::pair<int,int> idxs;
     int j, k;
     PairProb curPair;
-    for (int i = 0; i < numPairs; i++) {
+    int maxIters = std::min(numPairs, thresPairs);
+    for (int i = 0; i < maxIters; i++) {
         curPair = pairProbs[i];
         prob = curPair.first;
         idxs = curPair.second;
         j = idxs.first;
         k = idxs.second;
-        if (dotBracket[j] != '.' || dotBracket[k] != '.') {
+        if (dotBracket[j-beg] != '.' || dotBracket[k-beg] != '.') {
             continue;
         }
         out[j][k] = out[k][j] = 1.;
-        dotBracket[j] = '(';
-        dotBracket[k] = ')';
+        dotBracket[j-beg] = '(';
+        dotBracket[k-beg] = ')';
     }
 
     while (out.dim() <  lab.dim()) {
@@ -105,10 +93,11 @@ torch::Tensor binarize(torch::Tensor lab,
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("binarize",
           &binarize,
-          py::arg("label"),
-          py::arg("sequence"),
-          py::arg("thres") = 0.5,
+          py::arg("seq"),
+          py::arg("lab"),
           py::arg("min_dist") = 4,
+          py::arg("thres_pairs") = INT_MAX,
+          py::arg("thres_prob") = 0.0,
           py::arg("symmetrize") = true,
           py::arg("canonicalize") = true);
 }

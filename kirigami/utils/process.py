@@ -4,10 +4,10 @@ from kirigami._globals import *
 from kirigami.utils.convert import dense2sequence
 
 
-__all__ = ["binarize", "get_scores"]
+__all__ = ["old_binarize", "get_scores"]
 
 
-def binarize(seq: torch.Tensor,
+def old_binarize(seq: torch.Tensor,
              lab: torch.Tensor,
              max_pad: int = 512,
              thres: float = .5,

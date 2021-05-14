@@ -159,7 +159,7 @@ def dense2pairmap(ipt: torch.Tensor, seq_length: Optional[int] = None) -> PairMa
     beg = (mat.shape[0] - seq_length) // 2
     end = beg + seq_length
     values, js = torch.max(mat[beg:end,beg:end], 0)
-    js -= beg
+    # js -= beg
     js[values <= 0.] = NO_CONTACT
     js_ints = map(int, js)
     pair_map = OrderedDict(enumerate(js_ints))

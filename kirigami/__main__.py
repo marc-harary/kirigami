@@ -86,12 +86,16 @@ def main():
                       help="number of workers for data loader")
     data.add_argument("--training-data-device",
                       required=True,
-                      choices=["cpu","gpu"],
+                      choices=["cpu","cuda"],
                       help="store training files on CPU but train on GPU")
     data.add_argument("--validation-data-device",
                       required=True,
-                      choices=["cpu","gpu"],
+                      choices=["cpu","cuda"],
                       help="store validation files on CPU and validate on GPU")
+    data.add_argument("--disable-pre-concatenation",
+                      default=False,
+                      action="store_true",
+                      help="skip pre-concatenation before input to network")
 
     parser_train.add_argument("--mixed-precision",
                               action="store_true",
@@ -124,14 +128,10 @@ def main():
                        help="add layers to model")
     model.add_argument("--model-device",
                        required=True,
-                       choices=["cpu","gpu"],
+                       choices=["cpu","cuda"],
                        help="store model on CPU or GPU") 
-    model.add_argument("--checkpoint-gradients",
-                       default=False,
-                       action="store_true",
-                       help="enabled gradient checkpointing") 
-    model.add_argument("--segments",
-                       default=1,
+    model.add_argument("--checkpoint-segments",
+                       default=0,
                        type=int,
                        help="chunks in model for gradient checkpointing") 
 
@@ -140,19 +140,22 @@ def main():
                                  default=False,
                                  action="store_true",
                                  help="binarize and threshold matrix")
-    post_processing.add_argument("--thres",
-                                 default=0.5,
+    post_processing.add_argument("--thres-prob",
+                                 default=0.0,
                                  type=float,
                                  help="threshold probability for binarization")
-    post_processing.add_argument("--canonicalize",
+    post_processing.add_argument("--thres-by-ground-pairs",
                                  default=False,
                                  action="store_true",
+                                 help="select number of pairs as in ground truth") 
+    post_processing.add_argument("--disable-canonicalize",
+                                 default=True,
+                                 action="store_false",
                                  help="filter for only Wobble and W-C pairs") 
-    post_processing.add_argument("--symmetrize",
-                                 default=False,
-                                 action="store_true",
+    post_processing.add_argument("--disable-symmetrize",
+                                 default=True,
+                                 action="store_false",
                                  help="make output label matrix symmetrical")
-    
                                 
     parser_train.add_argument("--training-checkpoint-file",
                               required=True,
@@ -167,15 +170,20 @@ def main():
                               type=Path,
                               help="path to log file")
     parser_train.add_argument("--resume",
+                              default=False,
                               action="store_true", 
                               help="resume training")
     parser_train.add_argument("--quiet",
                               action="store_true",
                               help="quiet")
-    parser_train.add_argument("--show-bar",
-                              action="store_true",
+    parser_train.add_argument("--disable-batch-bar",
                               default=False,
-                              help="show tqdm progress bar")
+                              action="store_true",
+                              help="show tqdm progress bar for each batch")
+    parser_train.add_argument("--disable-epoch-bar",
+                              default=False,
+                              action="store_true",
+                              help="show tqdm progress bar for each epoch")
     parser_train.add_argument("--disable-cuda",
                               action="store_true",
                               help="disable CUDA")

@@ -1,8 +1,9 @@
 import os
+import itertools
 import time
 import logging
 import datetime
-from typing import Union, Callable, List, Dict, Optional
+from typing import Union, Callable, List, Dict, Optional, Tuple
 from pathlib import Path
 import gc
 
@@ -13,7 +14,7 @@ from torch import nn
 from torch.utils.data import DataLoader, Dataset
 from torch.cuda.amp import GradScaler, autocast
 from torch.utils.checkpoint import checkpoint
-# import torch.multiprocessing as mp
+import torch.multiprocessing as mp
 
 import kirigami.nn
 from kirigami._globals import *
@@ -21,7 +22,8 @@ from kirigami.utils.data import BpseqDataset, EmbeddedDataset, StDataset
 from kirigami.utils.convert import *
 from kirigami.utils.process import *
 from kirigami.utils.memory_utils import *
-# from kirigami import binarize
+from kirigami import binarize
+from kirigami.utils import *
 
 
 __all__ = ["Train"] 
@@ -37,19 +39,20 @@ class Train:
     criterion: Callable
     epochs: int
     iters_to_accumulate: int
-    segments: int
+    checkpoint_segments: int
     training_loader: DataLoader
     validation_loader: Union[DataLoader,None]
     validation_device: torch.device
     log_file: Union[Path,None]
     training_checkpoint_file: Union[Path,None]
     validation_checkpoint_file: Union[Path,None]
-    checkpoint_gradients: bool
-    binarize: bool
-    thres: float
+    thres_prob: float
+    thres_by_ground_pairs: bool
     canonicalize: bool
     symmetrize: bool
-    show_bar: bool
+    show_batch_bar: bool
+    show_epoch_bar: bool
+    pre_concatenate: bool
     quiet: bool
     best_mcc: Optional[float]
     best_loss: Optional[float]
@@ -64,7 +67,7 @@ class Train:
                  criterion: Callable,
                  epochs: int,
                  iters_to_accumulate: int,
-                 segments: int,
+                 checkpoint_segments: int,
                  training_loader: DataLoader,
                  validation_loader: Union[DataLoader,None],
                  validation_device: torch.device,
@@ -72,11 +75,13 @@ class Train:
                  training_checkpoint_file: Union[Path,None],
                  validation_checkpoint_file: Union[Path,None],
                  checkpoint_gradients: bool = False,
-                 binarize: bool = True,
-                 thres: float = 0.5,
+                 thres_prob: float = 0.5,
+                 thres_by_ground_pairs: bool = True,
                  canonicalize: bool = True,
                  symmetrize: bool = True,
-                 show_bar: bool = True,
+                 show_batch_bar: bool = True,
+                 show_epoch_bar: bool = True,
+                 pre_concatenate: bool = True,
                  quiet: bool = False) -> None:
         self.model = model
         self.model_device = model_device
@@ -87,8 +92,7 @@ class Train:
         self.scaler = torch.cuda.amp.GradScaler(enabled=mixed_precision)
         self.epochs = epochs
         self.iters_to_accumulate = iters_to_accumulate
-        self.checkpoint_gradients = checkpoint_gradients
-        self.segments = segments
+        self.checkpoint_segments = checkpoint_segments
 
         self.training_loader = training_loader
         self.validation_loader = validation_loader
@@ -96,10 +100,11 @@ class Train:
         self.best_mcc = None if not validation_loader else -1.
         self.best_loss = None if not validation_loader else float("inf")
 
-        self.binarize = binarize
-        self.thres = thres
+        self.thres_prob = thres_prob
+        self.thres_by_ground_pairs = thres_by_ground_pairs
         self.canonicalize = canonicalize
         self.symmetrize = symmetrize
+        self.pre_concatenate = pre_concatenate
 
         self.training_checkpoint_file = training_checkpoint_file
         self.validation_checkpoint_file = validation_checkpoint_file
@@ -115,12 +120,27 @@ class Train:
         #     self.hooks.append(module.register_backward_hook(make_hook(self.logs, idx, "bwd")))
 
         self.quiet = quiet
-        self.show_bar = show_bar
+        self.show_batch_bar = show_batch_bar
+        self.show_epoch_bar = show_epoch_bar
 
 
     def log(self, message: str) -> None:
         if not self.quiet:
             logging.info(" " + message)
+
+
+    def collate(self, seq: torch.Tensor, lab: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        lab_out = lab.to_dense() if lab.is_sparse else lab
+        seq_out = seq.to_dense() if seq.is_sparse else seq
+        if seq_out.device != self.model_device:
+            seq_out = seq_out.to(self.model_device)
+            lab_out = lab_out.to(self.model_device)
+        if self.pre_concatenate:
+            seq_out = kirigami.concatenate_batch(seq_out)
+        if seq_out.dtype != torch.float64:
+            seq_out = seq_out.float()
+            lab_out = lab_out.float()
+        return seq_out, lab_out
 
 
     def run(self, resume: bool = False) -> None:
@@ -139,28 +159,28 @@ class Train:
             loss = checkpoint["loss"]
             self.log(f"Resuming at epoch {start_epoch} with loss {loss}")
 
-        range_iterator = range(start_epoch, self.epochs)
-        outer_loop = tqdm(range_iterator) if self.show_bar else range_iterator
+        epoch_iterator = range(start_epoch, self.epochs)
+        epoch_loop = tqdm(epoch_iterator) if self.show_epoch_bar else epoch_iterator
 
         scaler = GradScaler()
 
-        for epoch in outer_loop:
+        for epoch in epoch_loop:
             start = datetime.datetime.now()
             self.log(f"Starting epoch {epoch} at " + str(start))
             length = len(self.training_loader)
             train_loss_tot = 0.
-            for i, (seq, lab) in tqdm(enumerate(self.training_loader)):
-                seq_copy = concatenate_batch(seq).to(self.model_device).float()
-                lab_copy = lab.to(self.model_device).float()
+            batch_iterator = enumerate(self.training_loader)
+            batch_loop = tqdm(batch_iterator) if self.show_batch_bar else batch_iterator
+            for i, batch in batch_loop:
+                # seq_copy = concatenate_batch(seq).to(self.model_device).float()
+                seq_coll, lab_coll = self.collate(*batch)
                 with autocast(enabled=self.mixed_precision):
-                    if self.checkpoint_gradients:
-                        # pred = torch.utils.checkpoint.checkpoint_sequential(self.model, self.segments, seq.to(self.model_device).float())
-                        pred = torch.utils.checkpoint.checkpoint_sequential(self.model, self.segments, seq_copy)
+                    if self.checkpoint_segments > 0:
+                        pred = torch.utils.checkpoint.checkpoint_sequential(self.model, self.checkpoint_segments, seq_coll)
                     else:
-                        # pred = self.model(seq.to(self.model_device).float()) 
-                        pred = self.model(seq_copy)
-                    # loss = self.criterion(pred, lab.to(self.model_device).float())
-                    loss = self.criterion(pred, lab_copy)
+                        import pdb; pdb.set_trace()
+                        pred = self.model(seq_coll)
+                    loss = self.criterion(pred, lab_coll.reshape_as(pred))
                     loss /= self.iters_to_accumulate
                 scaler.scale(loss).backward()
                 if i % self.iters_to_accumulate == 0:
@@ -181,8 +201,8 @@ class Train:
             self.log(f"Mean training loss for epoch {epoch}: {train_loss_mean}")
             if self.validation_loader:
                 self.validate(epoch)
-            self.log("Memory allocated: " + str(torch.cuda.memory_allocated() / 2**20))
-            self.log("Memory cached: " + str(torch.cuda.memory_cached() / 2**20) + "\n")
+            self.log("Memory allocated: " + str(torch.cuda.memory_allocated() / 2**20) + " MB")
+            self.log("Memory cached: " + str(torch.cuda.memory_cached() / 2**20) + " MB\n")
 
 
     def validate(self, epoch: int) -> None:
@@ -190,81 +210,67 @@ class Train:
         self.model.eval()
 
         n_batch = len(self.validation_loader)
-        raw_mean_loss = raw_mean_mcc = raw_mean_f1 = raw_mean_pairs = 0.
-        bin_mean_loss= bin_mean_mcc = bin_mean_f1 = bin_mean_pairs = 0. if self.binarize else None
+        raw_mean_loss = mean_loss = mean_mcc = mean_f1 = mean_pairs = 0.
         mean_ground_pairs = 0
 
-        with torch.no_grad():
-            for i, (seq, lab) in enumerate(self.validation_loader):
-                seq_length = seq.sum().item()
-                seq_copy = concatenate_batch(seq).to(self.model_device).float()
-                lab_copy = lab.to(self.model_device).float()
-                lab_pair_map = dense2pairmap(lab, seq_length=seq_length)
+        batch_iterator = enumerate(self.validation_loader)
+        batch_loop = tqdm(batch_iterator) if self.show_batch_bar else batch_iterator
 
-                raw_pred = self.model(seq_copy)
-                raw_loss = self.criterion(raw_pred, lab_copy)
+        with torch.no_grad():
+            for i, (seq, lab) in batch_loop:
+                seq_length = seq.sum().item()
+                seq_coll, lab_coll = self.collate(seq, lab)
+                lab_pair_map = dense2pairmap(lab_coll, seq_length=seq_length)
+                ground_pairs = int(lab.sum().item() / 2)
+                mean_ground_pairs += ground_pairs / n_batch
+
+                raw_pred = self.model(seq_coll)
+                raw_loss = self.criterion(raw_pred, lab_coll.reshape_as(raw_pred))
+                raw_mean_loss += raw_loss.item() / n_batch
                 if isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
                     raw_pred = torch.nn.functional.sigmoid(raw_pred) 
-                raw_pair_map = dense2pairmap(raw_pred, seq_length=seq_length)
-                raw_scores = get_scores(raw_pair_map, lab_pair_map)
-                raw_mean_mcc += raw_scores.mcc / n_batch
-                raw_mean_f1 += raw_scores.f1 / n_batch
-                raw_mean_pairs += raw_scores.pred_pairs / n_batch
-                raw_mean_loss += raw_loss.item() / n_batch
 
-                mean_ground_pairs += raw_scores.ground_pairs / n_batch
+                bin_pred = binarize(seq=dense2sequence(seq),
+                                    lab=lab_coll,
+                                    thres_prob=self.thres_prob,
+                                    thres_pairs=ground_pairs if self.thres_by_ground_pairs else sys.maxsize,
+                                    symmetrize=self.symmetrize,
+                                    canonicalize=self.canonicalize)
+                if isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
+                    bin_loss = torch.nn.functional.binary_cross_entropy(bin_pred, lab_coll.reshape_as(bin_pred))
+                else:
+                    bin_loss = self.criterion(bin_pred, lab_coll)
 
-                if self.binarize:
-                    bin_pred = binarize(seq,
-                                        raw_pred,
-                                        max_pad=512,
-                                        thres=self.thres,
-                                        symmetrize=self.symmetrize,
-                                        canonicalize=self.canonicalize)
-                    if isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
-                        bin_loss = torch.nn.functional.binary_cross_entropy(bin_pred, lab_copy)
-                    else:
-                        bin_loss = self.criterion(bin_pred, lab_copy)
-                    bin_pair_map = dense2pairmap(bin_pred, seq_length=seq_length)
-                    bin_scores = get_scores(bin_pair_map, lab_pair_map)
-                    bin_mean_mcc += bin_scores.mcc / n_batch
-                    bin_mean_f1 += bin_scores.f1 / n_batch
-                    bin_mean_pairs += bin_scores.pred_pairs / n_batch
-                    bin_mean_loss += bin_loss.item() / n_batch
+                pair_map = dense2pairmap(bin_pred, seq_length=seq_length)
+                scores = get_scores(pair_map, lab_pair_map)
+                mean_mcc += scores.mcc / n_batch
+                mean_f1 += scores.f1 / n_batch
+                mean_pairs += scores.pred_pairs / n_batch
+                mean_loss += bin_loss.item() / n_batch
 
-        better_mcc = max(raw_mean_mcc, bin_mean_mcc) 
-        better_loss = min(raw_mean_loss, bin_mean_loss)
-
-        # if better_mean_loss < self.best_loss:
-        if better_mcc > self.best_mcc:
+        if raw_mean_loss < self.best_loss:
             self.log(f"New optimum at epoch {epoch}")
-            self.best_mcc = better_mcc
-            self.best_loss = min(self.best_loss, better_loss)
+            self.best_mcc = mean_mcc
+            self.best_loss = raw_mean_loss
             torch.save({"epoch": epoch,
                         "model_state_dict": self.model.state_dict(),
                         "optimizer_state_dict": self.optimizer.state_dict(),
                         "mean_ground_pairs": mean_ground_pairs,
+                        "mean_pred_pairs": mean_pairs,
+                        "mean_mcc": mean_mcc,
+                        "mean_f1": mean_f1,
+                        "mean_loss": mean_loss,
                         "raw_mean_loss": raw_mean_loss,
-                        "raw_mean_mcc": raw_mean_mcc,
-                        "raw_mean_f1": raw_mean_f1,
-                        "raw_mean_pred_pairs": raw_mean_pairs,
-                        "bin_mean_loss": bin_mean_loss,
-                        "bin_mean_mcc": bin_mean_mcc,
-                        "bin_mean_f1": bin_mean_f1,
-                        "bin_mean_pred_pairs": bin_mean_pairs,
                         "best_loss": self.best_loss},
                        self.validation_checkpoint_file)
         end = datetime.datetime.now()
         delta = end - start
         self.log(f"Validation time for epoch {epoch}: {delta.seconds} s")
         self.log(f"Raw mean validation loss for epoch {epoch}: {raw_mean_loss}")
-        self.log(f"Raw mean MCC for epoch {epoch}: {raw_mean_mcc}")
-        self.log(f"Raw mean F1 for epoch {epoch}: {raw_mean_f1}")
-        self.log(f"Raw mean predicted pairs for epoch {epoch}: {raw_mean_pred_pairs}")
-        self.log(f"Binarized mean validation loss for epoch {epoch}: {bin_mean_loss}")
-        self.log(f"Binarized mean MCC for epoch {epoch}: {bin_mean_mcc}")
-        self.log(f"Binarized mean F1 for epoch {epoch}: {bin_mean_f1}")
-        self.log(f"Binarized mean predicted pairs for epoch {epoch}: {bin_mean_pred_pairs}")
+        self.log(f"Binarized mean validation loss for epoch {epoch}: {mean_loss}")
+        self.log(f"Mean MCC for epoch {epoch}: {mean_mcc}")
+        self.log(f"Mean F1 for epoch {epoch}: {mean_f1}")
+        self.log(f"Mean predicted pairs for epoch {epoch}: {mean_pairs}")
         self.log(f"Actual mean pairs: {mean_ground_pairs}")
         self.model.to(self.model_device)
         self.model.train()
@@ -272,14 +278,14 @@ class Train:
 
     @classmethod
     def from_namespace(cls, args: argparse.Namespace):
-        if args.model_device == "gpu":
+        if args.model_device == "cuda":
             if torch.cuda.is_available():
                 model_device = torch.device("cuda")
             else:
                 raise ValueError("CUDA is not available")
         else:
             model_device = torch.device("cpu")
-        if args.training_data_device == "gpu":
+        if args.training_data_device == "cuda":
             if torch.cuda.is_available():
                 training_data_device = torch.device("cuda")
             else:
@@ -314,7 +320,7 @@ class Train:
 
         validation_loader = None
         if hasattr(args, "validation_file"):
-            if args.validation_data_device == "gpu":
+            if args.validation_data_device == "cuda":
                 if torch.cuda.is_available():
                     validation_data_device = torch.device("cuda")
                 else:
@@ -344,7 +350,10 @@ class Train:
                                            shuffle=False,
                                            batch_size=1)
 
-        model = nn.Sequential(*[eval(layer) for layer in args.layers])
+        module_list = []
+        for layer in args.layers:
+            module_list.extend(flatten_module(eval(layer)))
+        model = nn.Sequential(*module_list)
         
         model = model.to(model_device)
         N = torch.cuda.device_count()
@@ -361,17 +370,18 @@ class Train:
                    criterion=criterion,
                    epochs=args.epochs,
                    iters_to_accumulate=args.iters_to_accumulate,
-                   segments=args.segments,
+                   checkpoint_segments=args.checkpoint_segments,
                    training_loader=training_loader,
                    validation_loader=validation_loader,
                    validation_device=validation_data_device,
                    log_file=args.log_file,
                    training_checkpoint_file=args.training_checkpoint_file,
                    validation_checkpoint_file=args.validation_checkpoint_file,
-                   show_bar=args.show_bar,
-                   binarize=args.binarize,
-                   thres=args.thres,
-                   canonicalize=args.canonicalize,
-                   symmetrize=args.symmetrize,
-                   checkpoint_gradients=args.checkpoint_gradients,
+                   thres_prob=args.thres_prob,
+                   thres_by_ground_pairs=args.thres_by_ground_pairs,
+                   pre_concatenate=not args.disable_pre_concatenation,
+                   show_batch_bar=not args.disable_batch_bar,
+                   show_epoch_bar=not args.disable_epoch_bar,
+                   canonicalize=not args.disable_canonicalize,
+                   symmetrize=not args.disable_symmetrize,
                    quiet=args.quiet)

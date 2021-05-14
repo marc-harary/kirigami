@@ -17,7 +17,7 @@ std::string dense2sequence(torch::Tensor seq) {
     int seqLength = seq_.sum().item<int>();
     int beg = (totalLength - seqLength) / 2;
     int end = beg + seqLength;
-    auto outTuple = at::max(seq_.index({Slice(), Slice(beg,end)}), 0);
+    auto outTuple = at::max(seq_.index({"...", Slice(beg,end,1)}), 0);
     std::string out(seqLength, ' ');
     for (int i = 0; i < seqLength; i++) {
         out[i] = BASES[i];
@@ -26,8 +26,8 @@ std::string dense2sequence(torch::Tensor seq) {
 }
         
 
-torch::Tensor binarize(torch::Tensor seq,
-                       torch::Tensor lab,
+torch::Tensor binarize(torch::Tensor lab,
+                       std::string seq,
                        int minDist = 4,
                        int thresPairs = INT_MAX,
                        double thresProb = 0.0,
@@ -39,8 +39,7 @@ torch::Tensor binarize(torch::Tensor seq,
         lab_ /= 2;
     }
 
-    std::string seqStr = dense2sequence(seq);
-    int seqLength = seqStr.size();
+    int seqLength = seq.size();
     int maxSize = lab_.size(0);
     int beg = (maxSize - seqLength) / 2;
     int end = beg + seqLength;
@@ -51,7 +50,7 @@ torch::Tensor binarize(torch::Tensor seq,
     for (int i = beg; i < end; i++) {
         for (int j = i + minDist; j < end; j++) {
             prob = lab_[i][j].item<double>();
-            if (prob >= thresProb && (!canonicalize || PAIRS.find({seqStr[i-beg],seqStr[j-beg]}) != PAIRS.end())) {
+            if (prob >= thresProb && (!canonicalize || PAIRS.find({seq[i-beg],seq[j-beg]}) != PAIRS.end())) {
                 pairProbs[numPairs++] = {prob, {i,j}};
             }
         }
@@ -93,8 +92,8 @@ torch::Tensor binarize(torch::Tensor seq,
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("binarize",
           &binarize,
-          py::arg("seq"),
           py::arg("lab"),
+          py::arg("seq"),
           py::arg("min_dist") = 4,
           py::arg("thres_pairs") = INT_MAX,
           py::arg("thres_prob") = 0.0,

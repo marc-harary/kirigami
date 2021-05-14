@@ -38,11 +38,6 @@ class SpotNet(torch.nn.Module):
         dilations = [2**(i%max_dilation_exp) for i in range(2*n_res)]
         layer_dict["resnet"] = kirigami.nn.ResNet(n_blocks=n_res, p=p_res, dilations=dilations, n_channels=depth_res, **resnet_kwargs)
         # Bi-LSTM
-        # layer_dict["lstm"] = torch.nn.Sequential(kirigami.nn.ActNorm(act=act, norm=norm, **resnet_kwargs),
-        #                                          kirigami.nn.LSTM_Wrapper(input_size=depth_res,
-        #                                                                   hidden_size=depth_lstm if n_fc > 0 else out_size,
-        #                                                                   batch_first=True,
-        #                                                                   bidirectional=True))
         layer_dict["lstm"] = torch.nn.Sequential(kirigami.nn.ActNorm(act=act, norm=res_norm, **resnet_kwargs),
                                                  torch.nn.Conv2d(in_channels=depth_res, out_channels=1, kernel_size=1),
                                                  kirigami.nn.Squeeze(),
@@ -52,18 +47,12 @@ class SpotNet(torch.nn.Module):
                                                                bidirectional=True),
                                                  kirigami.nn.DropH0C0())
         # Block B's
-        if fc_norm == "LayerNorm":
-            raise NotImplementedError
-        else:
-            # fc_kwargs = {"num_features": depth_fc}
-            fc_kwargs = {"num_features": out_size}
+        fc_kwargs = {"num_features": out_size}
         fc_list = [] 
-        # fc_list = [torch.nn.Conv2d(in_channels=depth_res, out_channels=1, kernel_size=1)]
         if n_fc > 0:
+            # have to multiply `depth_lstm` by 2 because LSTM is bidirectional
             fc_list.extend([torch.nn.Linear(in_features=2*depth_lstm, out_features=depth_fc if n_fc > 1 else out_size),
                             kirigami.nn.ActNormDrop(act=act, norm=fc_norm, p=p_fc, **fc_kwargs)])
-            # fc_list.extend([torch.nn.Linear(in_features=out_size, out_features=depth_fc if n_fc > 1 else out_size),
-            #                 kirigami.nn.ActNormDrop(act=act, norm=fc_norm, p=p_fc, **fc_kwargs)])
         if n_fc > 2:
             for _ in range(n_fc-2):
                 fc_list.extend([torch.nn.Linear(depth_fc, depth_fc),

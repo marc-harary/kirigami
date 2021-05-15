@@ -1,9 +1,9 @@
 import sys
 from pathlib import Path
 import argparse
-from kirigami.embed import *
-from kirigami.train import *
-from kirigami.test import *
+from kirigami.core.embed import *
+from kirigami.core.train import *
+from kirigami.core.test import *
 # from kirigami.predict import *
 
 

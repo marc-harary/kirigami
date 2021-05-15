@@ -1,5 +1,6 @@
-torch==1.7.1
+torch
 argparse
 munch
 multipledispatch
 tqdm
+pybind11

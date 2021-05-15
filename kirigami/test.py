@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader, Dataset
 
 import kirigami.nn
 from kirigami._globals import *
-from kirigami.utils.data import BpseqDataset, EmbeddedDataset, StDataset
+from kirigami.utils.data import *
 from kirigami.utils.convert import *
 
 
@@ -18,23 +18,39 @@ __all__ = ["Test"]
 
 
 class Test:
+    """namespace for test script"""
+
+    model: nn.Module
+    criterion: Callable
+    test_loader: DataLoader
+    filenames: List[Path]
+    out_file: Path
+    canonicalize: bool
+    symmetrize: bool
+    thres_prob: float
+    show_sequence_bar: bool
+    
     def __init__(self,
                  model: nn.Module,
                  criterion: Callable,
                  test_loader: DataLoader,
                  filenames: List[Path],
                  out_file: Path,
-                 thres: float = 0.5,
-                 show_bar: bool = True):
+                 canonicalize: bool = True,
+                 symmetrize: bool = True,
+                 thres_prob: float = 0.5,
+                 show_sequence_bar: bool = True):
         self.model = model
         self.criterion = criterion
         self.test_loader = test_loader
         self.filenames = filenames
         self.out_file = out_file
-        self.show_bar = show_bar
+        self.canonicalize = canonicalize
+        self.symmetrize = symmetrize
+        self.show_sequence_bar = show_sequence_bar
 
 
-    def run() -> None:
+    def run(self) -> None:
         zipped = zip(self.filenames, self.test_loader)
         loop = tqdm(zipped) if self.show_bar else zipped
         fp = open(self.out_file, "w")
@@ -61,11 +77,8 @@ class Test:
 
     @classmethod
     def from_namespace(cls, args: Namespace):
-        if args.device == "gpu":
-            if torch.cuda.is_available():
-                device = torch.device("cuda")
-            else:
-                raise ValueError("CUDA is not available")
+        if args.device == "cuda" and torch.cuda.is_available():
+            device = torch.device("cuda")
         else:
             device = torch.device("cpu")
 
@@ -85,9 +98,7 @@ class Test:
             test_set = StDataset(list_file=args.test_file,
                                  device=data,
                                  batch_load=False)
-        else:
-            raise ValueError("Invalid file type (pickled files cannot be tested; file names must be provided")
-        test_loader = DataLoader(test_set, shuffle=False, batch_size=batch_size)
+        test_loader = DataLoader(test_set, shuffle=False, batch_size=1)
 
         with open(args.test_file, "w") as f:
             filenames = f.read().splitlines()
@@ -95,6 +106,9 @@ class Test:
         return cls(model=model,
                    criterion=criterion,
                    test_loader=test_loader,
-                   filenames=filenames,
+                   filenames=args.filenames,
                    out_file=args.out_file,
-                   show_bar=args.show_bar)
+                   thres_prob=args.thres_prob,
+                   canonicalize=not args.disable_canonicalize,
+                   symmetrize=not args.disable_symmetrize,
+                   show_sequence_bar=not args.disable_sequence_bar)

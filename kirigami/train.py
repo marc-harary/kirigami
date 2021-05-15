@@ -178,7 +178,6 @@ class Train:
                     if self.checkpoint_segments > 0:
                         pred = torch.utils.checkpoint.checkpoint_sequential(self.model, self.checkpoint_segments, seq_coll)
                     else:
-                        import pdb; pdb.set_trace()
                         pred = self.model(seq_coll)
                     loss = self.criterion(pred, lab_coll.reshape_as(pred))
                     loss /= self.iters_to_accumulate

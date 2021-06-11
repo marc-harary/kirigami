@@ -41,15 +41,18 @@ class Embed:
 
     def run(self) -> None:
         N = len(self.in_files)
-        seqs = torch.empty(N, 4, self.pad_length, dtype=torch.uint8) 
-        labs =  torch.empty(N, 1, self.pad_length, self.pad_length, dtype=torch.uint8) 
+        seq_list = []
+        lab_list = []
         for i, file in tqdm(enumerate(self.in_files)):
             with open(file, "r") as f:
                 txt = f.read()
             seq, lab = self.embed_fcn(txt, dim=self.tensor_dim, pad_length=self.pad_length, device=self.device)
             if self.concatenate:
                 seq = concatenate_tensor(seq)
-            seqs[i], labs[i] = seq, lab
+            seq_list.append(seq)
+            lab_list.append(lab)
+        seqs = torch.stack(seq_list)
+        labs = torch.stack(lab_list)
         dset = torch.utils.data.TensorDataset(seqs, labs)
         torch.save(dset, self.out_file)
 

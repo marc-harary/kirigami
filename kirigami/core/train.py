@@ -22,8 +22,8 @@ from kirigami.utils.data import BpseqDataset, EmbeddedDataset, StDataset
 from kirigami.utils.convert import *
 from kirigami.utils.process import *
 from kirigami.utils.memory_utils import *
+from kirigami.utils.utils import *
 from kirigami import binarize
-from kirigami.utils import *
 
 
 __all__ = ["Train"] 
@@ -33,7 +33,6 @@ class Train:
     """Namespace for training scripts.""" 
 
     model: nn.Module
-    model_device: torch.device
     optimizer: torch.optim
     mixed_precision: bool
     criterion: Callable
@@ -41,7 +40,9 @@ class Train:
     iters_to_accumulate: int
     checkpoint_segments: int
     training_loader: DataLoader
+    training_collater: Callable
     validation_loader: Union[DataLoader,None]
+    validation_collater: Union[Callable,None]
     validation_device: torch.device
     log_file: Union[Path,None]
     training_checkpoint_file: Union[Path,None]
@@ -61,7 +62,6 @@ class Train:
     
     def __init__(self,
                  model: nn.Module,
-                 model_device: torch.device,
                  optimizer: torch.optim,
                  mixed_precision: bool,    
                  criterion: Callable,
@@ -69,7 +69,9 @@ class Train:
                  iters_to_accumulate: int,
                  checkpoint_segments: int,
                  training_loader: DataLoader,
+                 training_collater: Callable,
                  validation_loader: Union[DataLoader,None],
+                 validation_collater: Union[Callable,None],
                  validation_device: torch.device,
                  log_file: Union[Path,None],
                  training_checkpoint_file: Union[Path,None],
@@ -77,14 +79,13 @@ class Train:
                  checkpoint_gradients: bool = False,
                  thres_prob: float = 0.5,
                  thres_by_ground_pairs: bool = True,
+                 pre_concatenate: bool = True,
                  canonicalize: bool = True,
                  symmetrize: bool = True,
                  show_batch_bar: bool = True,
                  show_epoch_bar: bool = True,
-                 pre_concatenate: bool = True,
                  quiet: bool = False) -> None:
         self.model = model
-        self.model_device = model_device
         self.scaler = mixed_precision
         self.optimizer = optimizer
         self.criterion = criterion
@@ -95,7 +96,9 @@ class Train:
         self.checkpoint_segments = checkpoint_segments
 
         self.training_loader = training_loader
+        self.training_collater = training_collater
         self.validation_loader = validation_loader
+        self.validation_collater = validation_collater
         self.validation_device = validation_device
         self.best_mcc = None if not validation_loader else -1.
         self.best_loss = None if not validation_loader else float("inf")
@@ -152,7 +155,7 @@ class Train:
         start_epoch = 0
 
         if resume:
-            checkpoint = torch.load(self.validation_checkpoint_file)
+            checkpoint = torch.load(self.training_checkpoint_file)
             self.model.load_state_dict(checkpoint["model_state_dict"])
             self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
             start_epoch = checkpoint["epoch"]
@@ -171,9 +174,8 @@ class Train:
             train_loss_tot = 0.
             batch_iterator = enumerate(self.training_loader)
             batch_loop = tqdm(batch_iterator) if self.show_batch_bar else batch_iterator
-            for i, batch in batch_loop:
-                # seq_copy = concatenate_batch(seq).to(self.model_device).float()
-                seq_coll, lab_coll = self.collate(*batch)
+            for i, (seq, lab) in batch_loop:
+                seq_coll, lab_coll = self.training_collater(seq, lab)
                 with autocast(enabled=self.mixed_precision):
                     if self.checkpoint_segments > 0:
                         pred = torch.utils.checkpoint.checkpoint_sequential(self.model, self.checkpoint_segments, seq_coll)
@@ -217,22 +219,26 @@ class Train:
 
         with torch.no_grad():
             for i, (seq, lab) in batch_loop:
-                seq_length = seq.sum().item()
-                seq_coll, lab_coll = self.collate(seq, lab)
-                lab_pair_map = dense2pairmap(lab_coll, seq_length=seq_length)
-                ground_pairs = int(lab.sum().item() / 2)
+                seq_coll, lab_coll = self.validation_collater(seq, lab)
+                seq_non_cat = seq_coll.squeeze()[:4,:,0]
+                seq_str = dense2sequence(seq_non_cat)
+                seq_length = int(seq_non_cat.sum().item())
+                ground_pairs = int(lab_coll.sum().item() / 2)
                 mean_ground_pairs += ground_pairs / n_batch
-
+            
                 raw_pred = self.model(seq_coll)
                 raw_loss = self.criterion(raw_pred, lab_coll.reshape_as(raw_pred))
                 raw_mean_loss += raw_loss.item() / n_batch
+
                 if isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
                     raw_pred = torch.nn.functional.sigmoid(raw_pred) 
-
-                bin_pred = binarize(seq=dense2sequence(seq),
-                                    lab=lab_coll,
-                                    thres_prob=self.thres_prob,
+                
+                bin_pred = binarize(lab=raw_pred,
+                                    seq=seq_str,
+                                    # seq=seq_non_cat,
+                                    min_dist=4,
                                     thres_pairs=ground_pairs if self.thres_by_ground_pairs else sys.maxsize,
+                                    thres_prob=self.thres_prob,
                                     symmetrize=self.symmetrize,
                                     canonicalize=self.canonicalize)
                 if isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
@@ -240,14 +246,15 @@ class Train:
                 else:
                     bin_loss = self.criterion(bin_pred, lab_coll)
 
-                pair_map = dense2pairmap(bin_pred, seq_length=seq_length)
-                scores = get_scores(pair_map, lab_pair_map)
+                pred_contact_map = dense2pairmap(bin_pred, seq_length=seq_length)
+                lab_contact_map = dense2pairmap(lab_coll, seq_length=seq_length)
+                scores = get_scores(pred_contact_map, lab_contact_map)
                 mean_mcc += scores.mcc / n_batch
                 mean_f1 += scores.f1 / n_batch
                 mean_pairs += scores.pred_pairs / n_batch
                 mean_loss += bin_loss.item() / n_batch
 
-        if raw_mean_loss < self.best_loss:
+        if mean_mcc > self.best_mcc:
             self.log(f"New optimum at epoch {epoch}")
             self.best_mcc = mean_mcc
             self.best_loss = raw_mean_loss
@@ -271,7 +278,6 @@ class Train:
         self.log(f"Mean F1 for epoch {epoch}: {mean_f1}")
         self.log(f"Mean predicted pairs for epoch {epoch}: {mean_pairs}")
         self.log(f"Actual mean pairs: {mean_ground_pairs}")
-        self.model.to(self.model_device)
         self.model.train()
 
 
@@ -292,6 +298,7 @@ class Train:
         else:
             training_data_device = torch.device("cpu")
         
+        training_collater = lambda x: x
         if args.training_filetype == "bpseq-lst":
             training_set = BpseqDataset(list_file=args.training_file,
                                         max_len=args.max_length,
@@ -309,8 +316,20 @@ class Train:
                                      batch_load=args.batch_load)
         elif args.training_filetype == "pt":
             training_set = torch.load(args.training_file)
-        else:
-            raise ValueError("Invalid file type")
+
+            train_coll_list = []
+            seq, _ = training_set[0]
+
+            if seq.dtype != torch.float:
+                train_coll_list.append(lambda x, y: (x.float(), y.float()))
+            if seq.device != model_device:
+                train_coll_list.append(lambda x, y: (x.to(model_device), y.to(model_device)))
+            if seq.is_sparse:
+                train_coll_list.append(lambda x, y: (x.to_dense(), y.to_dense()))
+            if seq.size(-1) != seq.size(-2): # sequence is concatenated
+                train_coll_list.append(lambda x, y: (concatenate_batch(x), y))
+
+            training_collater = compose_functions(reversed(train_coll_list))
         training_loader = DataLoader(training_set,
                                      shuffle=args.shuffle,
                                      batch_size=args.batch_size,
@@ -319,6 +338,7 @@ class Train:
 
         validation_loader = None
         if hasattr(args, "validation_file"):
+            validation_collater = lambda x: x
             if args.validation_data_device == "cuda":
                 if torch.cuda.is_available():
                     validation_data_device = torch.device("cuda")
@@ -343,11 +363,21 @@ class Train:
                                            batch_load=args.batch_load)
             elif args.validation_filetype == "pt":
                 validation_set = torch.load(args.validation_file)
-            else:
-                raise ValueError("Invalid file type")
-            validation_loader = DataLoader(validation_set,
-                                           shuffle=False,
-                                           batch_size=1)
+
+                val_coll_list = []
+                seq, _ = validation_set[0]
+
+                if seq.device != model_device:
+                    val_coll_list.append(lambda x, y: (x.to(model_device), y.to(model_device)))
+                if seq.is_sparse:
+                    val_coll_list.append(lambda x, y: (x.to_dense(), y.to_dense()))
+                if seq.size(-1) != seq.size(-2): # sequence is concatenated
+                    val_coll_list.append(lambda x, y: (concatenate_batch(x), y))
+                if seq.dtype != torch.float:
+                    val_coll_list.append(lambda x, y: (x.float(), y.float()))
+
+                validation_collater = compose_functions(reversed(val_coll_list))
+            validation_loader = DataLoader(validation_set, shuffle=False, batch_size=1)
 
         module_list = []
         for layer in args.layers:
@@ -363,7 +393,6 @@ class Train:
         criterion = eval(args.criterion)
 
         return cls(model=model, 
-                   model_device=model_device,
                    mixed_precision=args.mixed_precision,
                    optimizer=optimizer,
                    criterion=criterion,
@@ -371,7 +400,9 @@ class Train:
                    iters_to_accumulate=args.iters_to_accumulate,
                    checkpoint_segments=args.checkpoint_segments,
                    training_loader=training_loader,
+                   training_collater=training_collater,
                    validation_loader=validation_loader,
+                   validation_collater=validation_collater,
                    validation_device=validation_data_device,
                    log_file=args.log_file,
                    training_checkpoint_file=args.training_checkpoint_file,

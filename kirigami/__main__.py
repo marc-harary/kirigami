@@ -190,15 +190,23 @@ def main():
                              required=True,
                              type=Path,
                              help="path to output `.csv` file")
-    train_parser.add_argument("--disable-sequence-bar",
-                              default=False,
-                              action="store_true",
-                              help="show tqdm progress bar for each sequence")
+    test_parser.add_argument("--checkpoint-file",
+                             required=True,
+                             type=Path,
+                             help="path to checkpoint file")
+    test_parser.add_argument("--disable-sequence-bar",
+                             default=False,
+                             action="store_true",
+                             help="show tqdm progress bar for each sequence")
     test_parser.add_argument("--criterion",
                              type=str,
                              required=True,
                              help="criterion (loss function) for training")
     test_model = test_parser.add_argument_group()
+    test_parser.add_argument("--model-device",
+                             required=True,
+                             type=str,
+                             help="device on which to test model")
     test_model.add_argument("--add-layer",
                             metavar="LAYER",
                             required=True,

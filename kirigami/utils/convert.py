@@ -3,11 +3,10 @@ import re
 from pathlib import Path
 from typing import Tuple, OrderedDict, Optional
 from collections import defaultdict, namedtuple, deque
-from operator import itemgetter
-from itertools import permutations
 import torch
 import torch.nn.functional as F
 from kirigami._globals import *
+from kirigami._classes import *
 
 
 __all__ = ["concatenate_batch",
@@ -37,27 +36,59 @@ __all__ = ["concatenate_batch",
 
            "bpseq2seqlab",
            "bpseq2sparse",
-           "bpseq2dense"]
+           "bpseq2dense",
+
+           "pdb2distmap",
+           "distmap2float"]
 
 
-def concatenate_batch(ipt: torch.tensor) -> torch.tensor:
+def concatenate_batch(ipt: torch.tensor, dim: int = 4) -> torch.tensor:
     assert ipt.dim() == 3
     ipt_unsqz = ipt.unsqueeze(-1)
     rows = torch.cat(ipt_unsqz.shape[2] * [ipt_unsqz], 3)
     cols = rows.permute(0, 1, 3, 2)
     out = torch.cat((rows,cols), 1)
+    while out.dim() < dim:
+        out.unsqueeze_(0)
     return out
 
 
-def concatenate_tensor(ipt: torch.tensor) -> torch.tensor:
-    assert ipt.dim() == 2
-    ipt_unsqz = ipt.unsqueeze(0)
+def concatenate_tensor(ipt: torch.tensor, dim: int = 3) -> torch.tensor:
+    ipt_sqz = ipt.squeeze()
+    assert ipt_sqz.dim() == 2
+    ipt_unsqz = ipt_sqz.unsqueeze(0)
     out = concatenate_batch(ipt_unsqz)
-    return out.squeeze() 
+    while out.dim() < dim:
+        out.unsqueeze_(0)
+    return out
+
+
+# def sequence2sparse(sequence: str,
+#                     dim: int = 2,
+#                     pad_length: int = 0,
+#                     dtype: torch.dtype = torch.uint8,
+#                     device: torch.device = torch.device("cpu")) -> torch.tensor:
+#     """converts `.fasta`-style sequence to sparse tensor"""
+#     sequence_copy = sequence.strip().upper()
+#     seq_length = len(sequence_copy)
+#     full_length = max(pad_length, seq_length)
+#     size = (4, full_length)
+#     while len(size) < dim:
+#         size = (1, *size)
+#     i = torch.zeros(2, full_length, device=device)
+#     beg = (full_length - seq_length) // 2
+#     end = beg + seq_length
+#     i[0,beg:end] = torch.tensor([CHAR2IDX[char] for char in sequence_copy], device=device)
+#     i[1,beg:end] = torch.arange(seq_length, device=device) + beg
+#     v = torch.ones(i.shape[1], dtype=dtype, device=device)
+#     while i.shape[0] < dim:
+#         i = torch.cat([torch.zeros(1,full_length), i])
+#     out = torch.sparse_coo_tensor(indices=i, values=v, size=size, dtype=dtype, device=device)
+#     return out
 
 
 def sequence2sparse(sequence: str,
-                    dim: int = 3,
+                    dim: int = 2,
                     pad_length: int = 0,
                     dtype: torch.dtype = torch.uint8,
                     device: torch.device = torch.device("cpu")) -> torch.tensor:
@@ -70,89 +101,85 @@ def sequence2sparse(sequence: str,
         size = (1, *size)
     i = torch.zeros(2, seq_length, device=device)
     beg = (full_length - seq_length) // 2
-    end = beg + seq_length
-    i[1,:] = torch.arange(seq_length, device=device) + beg
     i[0,:] = torch.tensor([CHAR2IDX[char] for char in sequence_copy], device=device)
+    i[1,:] = torch.arange(seq_length, device=device) + beg
     v = torch.ones(i.shape[1], dtype=dtype, device=device)
+    while i.shape[0] < dim:
+        i = torch.cat([torch.zeros(1,seq_length), i])
     out = torch.sparse_coo_tensor(indices=i, values=v, size=size, dtype=dtype, device=device)
     return out
 
 
 def sequence2dense(sequence: str,
-                   dim: int = 3,
+                   dim: int = 2,
                    pad_length: int = 0,
                    dtype: torch.dtype = torch.uint8,
                    device: torch.device = torch.device("cpu")) -> torch.tensor:
     """converts `.fasta`-style sequence to tensor"""
-    dense = sequence2sparse(sequence, dim, pad_length, dtype, device).to_dense()
-    while dense.dim() < dim:
-        dense.unsqueeze_(0)
-    return dense
+    return sequence2sparse(sequence, dim, pad_length, dtype, device).to_dense()
 
 
-def pairmap2sparse(pair_map: PairMap,
-                   dim: int = 3,
+def pairmap2sparse(contact_map: ContactMap,
+                   dim: int = 2,
                    pad_length: int = 0,
                    dtype: torch.dtype = torch.uint8,
                    device: torch.device = torch.device("cpu")) -> torch.tensor:
-    """converts `PairMap` object to sparse tensor"""
+    """converts `ContactMap` object to sparse tensor"""
     # drop unpaired nucleotides
     # sort every index-pair so redundancies are obvious (e.g., (0,99), (99,0))
     # i = list(map(sorted, i))
     # drop redundancies
     # i = list(set(map(tuple, i)))
-    seq_length = len(pair_map)
+    seq_length = len(contact_map)
     pad_length = max(pad_length, seq_length)
     size = (pad_length, pad_length)
     while len(size) < dim:
         size = (1, *size)
     beg = (pad_length - seq_length) // 2
-    pairs = [pair for pair in pair_map.items() if pair[1] >= 0]
+    pairs = [pair for pair in contact_map.items() if pair[1] >= 0]
     if not pairs:
         # no pairs in molecule; need to pass `False` b/c at least one value required
-        return torch.sparse_coo_tensor(indices=[[0],[0]], values=[False], size=size, dtype=dtype, device=device)
+        return torch.sparse_coo_tensor(indices=torch.zeros(dim,1), values=[False], size=size, dtype=dtype, device=device)
     i = torch.tensor(pairs, device=device).T + beg # add padding offset
     v = torch.ones(i.shape[1], dtype=dtype, device=device)
+    while i.shape[0] < dim:
+        i = torch.cat([torch.zeros(1, len(pairs)), i])
     return torch.sparse_coo_tensor(indices=i, values=v, size=size, dtype=dtype, device=device)
 
 
-def pairmap2dense(pair_map: PairMap,
-                  dim: int = 3,
+def pairmap2dense(contact_map: ContactMap,
+                  dim: int = 2,
                   pad_length: int = 0,
                   dtype: torch.dtype = torch.uint8,
                   device: torch.device = torch.device("cpu")) -> torch.tensor:
-    """converts `PairMap` object to dense tensor"""
-    dense = pairmap2sparse(pair_map, dim, pad_length, dtype, device).to_dense()
-    while dense.dim() < dim:
-        dense.unsqueeze_(0)
-    return dense
-
+    """converts `ContactMap` object to dense tensor"""
+    return pairmap2sparse(contact_map, dim, pad_length, dtype, device).to_dense()
 
 
 def seqlab2sparse(seq_lab: SeqLab,
-                  dim: int = 3,
+                  dim: int = 2,
                   pad_length: int = 0,
                   dtype: torch.dtype = torch.uint8,
                   device: torch.device = torch.device("cpu")) -> Tuple[torch.tensor,torch.tensor]:
     """converts `SeqLab` object to sparse tensors"""
     seq_sparse = sequence2sparse(seq_lab.sequence, dim, pad_length, dtype, device)
-    pair_map_sparse = pairmap2sparse(seq_lab.pair_map, dim, pad_length, dtype, device)
-    return seq_sparse, pair_map_sparse 
+    contact_map_sparse = pairmap2sparse(seq_lab.contact_map, dim, pad_length, dtype, device)
+    return seq_sparse, contact_map_sparse 
 
 
 def seqlab2dense(seq_lab: SeqLab,
-                 dim: int = 3,
+                 dim: int = 2,
                  pad_length: int = 0,
                  dtype: torch.dtype = torch.uint8,
                  device: torch.device = torch.device("cpu")) -> Tuple[torch.tensor,torch.tensor]:
     """converts `SeqLab` object to dense tensors"""
     seq_dense = sequence2dense(seq_lab.sequence, dim, pad_length, dtype, device)
-    pair_map_dense = pairmap2dense(seq_lab.pair_map, dim, pad_length, dtype, device)
-    return seq_dense, pair_map_dense 
+    contact_map_dense = pairmap2dense(seq_lab.contact_map, dim, pad_length, dtype, device)
+    return seq_dense, contact_map_dense 
 
 
-def dense2pairmap(ipt: torch.Tensor, seq_length: Optional[int] = None) -> PairMap:
-    """converts binarized contact matrix to `PairMap` object"""
+def dense2pairmap(ipt: torch.Tensor, seq_length: Optional[int] = None) -> ContactMap:
+    """converts binarized contact matrix to `ContactMap` object"""
     mat = ipt.squeeze()
     assert mat.dim() == 2
     seq_length = seq_length or mat.shape[0]
@@ -162,15 +189,15 @@ def dense2pairmap(ipt: torch.Tensor, seq_length: Optional[int] = None) -> PairMa
     # js -= beg
     js[values <= 0.] = NO_CONTACT
     js_ints = map(int, js)
-    pair_map = OrderedDict(enumerate(js_ints))
-    return pair_map
+    contact_map = OrderedDict(enumerate(js_ints))
+    return contact_map
 
 
 def dense2sequence(ipt: torch.Tensor) -> str:
     """converts embedded `.fasta`-style sequence to string"""
     ipt_ = ipt.squeeze()
     total_length = ipt_.shape[1]
-    seq_length = ipt_.sum().item()
+    seq_length = int(ipt_.sum().item())
     beg = (total_length - seq_length) // 2
     end = beg + seq_length
     _, js = torch.max(ipt_[:,beg:end], 0)
@@ -179,8 +206,8 @@ def dense2sequence(ipt: torch.Tensor) -> str:
 
 def dense2seqlab(sequence: torch.Tensor, label: torch.Tensor) -> SeqLab:
     sequence_str = dense2sequence(sequence)
-    pair_map = dense2pairmap(label)
-    return SeqLab(len(sequence_str), sequence_str, pair_map)
+    contact_map = dense2pairmap(label)
+    return SeqLab(len(sequence_str), sequence_str, contact_map)
 
 
 def dense2bpseq(sequence: torch.Tensor, label: torch.Tensor) -> str:
@@ -190,14 +217,13 @@ def dense2bpseq(sequence: torch.Tensor, label: torch.Tensor) -> str:
 
 
 def seqlab2bpseq(seq_lab: SeqLab) -> str:
-    """converts `.fasta`-style sequence and `PairMap` to `.bpseq`-style string"""
-    out_list = [f"{i+1} {char.upper()} {seq_lab.pair_map[i]+1}\n" for i, char in enumerate(seq_lab.sequence)]
+    """converts `.fasta`-style sequence and `ContactMap` to `.bpseq`-style string"""
+    out_list = [f"{i+1} {char.upper()} {seq_lab.contact_map[i]+1}\n" for i, char in enumerate(seq_lab.sequence)]
     return "".join(out_list)
 
 
-
-def dotbracket2pairmap(dot_bracket: str) -> PairMap:
-    """converts `.db`-style string to `PairMap`"""
+def dotbracket2pairmap(dot_bracket: str) -> ContactMap:
+    """converts `.db`-style string to `ContactMap`"""
     lines = dot_bracket.splitlines()
     start_idx = 0
     while lines[start_idx].startswith("#"):
@@ -206,7 +232,7 @@ def dotbracket2pairmap(dot_bracket: str) -> PairMap:
     paren = deque()
     square = deque()
     curly = deque()
-    out = PairMap()
+    out = ContactMap()
     for i, char in enumerate(lines):
         if char == ".":
             out[i] = NO_CONTACT
@@ -254,7 +280,6 @@ def dotbracket2pairmap(dot_bracket: str) -> PairMap:
 #     return out
 
 
-
 def st2seqlab(st: str) -> SeqLab:
     """converts `st`-style string to `SeqLab` object"""
     lines = st.splitlines()
@@ -263,32 +288,29 @@ def st2seqlab(st: str) -> SeqLab:
         start_idx += 1
     sequence = lines[start_idx]
     dot_bracket = lines[start_idx+1]
-    pair_map = dotbracket2pairmap(dot_bracket)
-    return SeqLab(len(pair_map), sequence, pair_map)
+    contact_map = dotbracket2pairmap(dot_bracket)
+    return SeqLab(len(contact_map), sequence, contact_map)
 
 
 def st2sparse(st: str,
+              dim: int = 2,
               pad_length: int = 0,
               dtype: torch.dtype = torch.uint8,
               device: torch.device = torch.device("cpu")) -> torch.tensor:
     """converts `.st`-style string to sparse tensor"""
     seq_lab = st2seqlab(st)
     seq_sparse = sequence2sparse(seq_lab.sequence, dim, pad_length, dtype, device)
-    pair_map_sparse = pairmap2sparse(seq.pair_map, dim, pad_length, dtype, device)
-    return seq_sparse, pair_map_sparse 
+    contact_map_sparse = pairmap2sparse(seq.contact_map, dim, pad_length, dtype, device)
+    return seq_sparse, contact_map_sparse 
     
 
 def st2dense(st: str,
-             dim: int = 3,
+             dim: int = 2,
              pad_length: int = 0,
              dtype: torch.dtype = torch.uint8,
              device: torch.device = torch.device("cpu")) -> torch.tensor:
     """converts `.st`-style string to dense tensor"""
-    dense = seqlab2sparse(st2seqlab(st)).to_dense()
-    while dense.dim() < dim:
-        dense.unsqueeze_(0)
-    return dense
-
+    return seqlab2sparse(st2seqlab(st), dim, pad_length, dtype, device).to_dense()
 
 
 def bpseq2seqlab(bpseq: str) -> SeqLab:
@@ -303,12 +325,12 @@ def bpseq2seqlab(bpseq: str) -> SeqLab:
         i, j = int(i) - 1, int(j) - 1
         pair_default[i], pair_default[j] = j, i
         sequence += base.upper()
-    pair_map = OrderedDict({i: pair_default[i] for i in range(length)})
-    return SeqLab(len(sequence), sequence, pair_map)
+    contact_map = OrderedDict({i: pair_default[i] for i in range(length)})
+    return SeqLab(len(sequence), sequence, contact_map)
 
 
 def bpseq2sparse(bpseq: str,
-                 dim: int = 3,
+                 dim: int = 2,
                  pad_length: int = 0,
                  dtype: torch.dtype = torch.uint8,
                  device: torch.device = torch.device("cpu")) -> torch.tensor:
@@ -317,13 +339,45 @@ def bpseq2sparse(bpseq: str,
 
 
 def bpseq2dense(bpseq: str,
-                dim: int = 3,
+                dim: int = 2,
                 pad_length: int = 0,
                 dtype: torch.dtype = torch.uint8,
                 device: torch.device = torch.device("cpu")) -> torch.tensor:
-    """Converts `.bpseq`-style string to dense tensor"""
-    seq_dense, lab_dense = seqlab2dense(bpseq2seqlab(bpseq), dim, pad_length, dtype, device)
-    while seq_dense.dim() < dim:
-        seq_dense.unsqueeze_(0)
-        lab_dense.unsqueeze_(0)
-    return seq_dense, lab_dense
+    """converts `.bpseq`-style string to dense tensor"""
+    return seqlab2dense(bpseq2seqlab(bpseq), dim, pad_length, dtype, device)
+
+
+def pdb2distmap(pdb: str) -> DistMap:
+    lines = pdb.splitlines()
+    del lines[0] # drop header
+    c = -2*len(lines) + 2
+    dis = 1 - 4*c
+    sqrt_val = dis**.5
+    L = int((1+sqrt_val) / 2)
+    out_unsort = {}
+    for line in lines:
+        words = line.split()
+        i = int(words[2]) - 1
+        j = int(words[5]) - 1
+        dist_list = list(map(float, words[-10:]))
+        dist = Dist(*dist_list)
+        out_unsort[(i,j)] = out_unsort[(j,i)] = dist
+    for i in range(L+1):
+        out_unsort[(i,i)] = Dist(*(10*[0]))
+    out = OrderedDict({key: out_unsort[key] for key in sorted(out_unsort)})
+    return out
+
+    
+def distmap2float(dist_map: DistMap,
+                  dim: int = 3,
+                  pad_length: int = 0,
+                  dtype: torch.dtype = torch.float,
+                  device: torch.device = torch.device("cpu")) -> torch.tensor:
+    fields = dist_map[(0,0)].__annotations__.keys()
+    L = int(len(dist_map)**.5)
+    out = torch.zeros((10, L, L))
+    for (i, j), dist in dist_map.items():
+        out[:,i,j] = torch.tensor([getattr(dist, field) for field in fields])
+    while out.dim() < dim:
+        out.unsqueeze_(0)
+    return out

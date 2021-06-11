@@ -1,6 +1,4 @@
-from typing import OrderedDict
 from collections import defaultdict, namedtuple
-from dataclasses import dataclass
 import torch
 
 
@@ -21,11 +19,7 @@ __all__ = ["BASE_CHARS",
            "IDX2CHAR",
 
            "CANONICAL_CHARS",
-           "CANONICAL_TUPLES",
-
-           "PairMap",
-           "Scores",
-           "SeqLab"]
+           "CANONICAL_TUPLES"]
 
 
 BASE_CHARS = "AUCG"
@@ -51,23 +45,3 @@ CANONICAL_TUPLES = [(BASE_TUPLES[0], BASE_TUPLES[1]),
                     (BASE_TUPLES[3], BASE_TUPLES[2]),
                     (BASE_TUPLES[1], BASE_TUPLES[3]),
                     (BASE_TUPLES[3], BASE_TUPLES[1])]
-
-PairMap = OrderedDict[int,int]
-# Scores = namedtuple("Scores", ["tp","tn","fp","fn","f1","mcc","ground_pairs","pred_pairs"])
-
-@dataclass
-class Scores:
-    tp: float
-    tn: float
-    fp: float
-    fn: float
-    f1: float
-    mcc: float
-    ground_pairs: int
-    pred_pairs: int 
-
-@dataclass
-class SeqLab:
-    length: int
-    sequence: str
-    pair_map: PairMap

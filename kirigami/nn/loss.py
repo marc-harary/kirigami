@@ -3,21 +3,19 @@ import torch.nn as nn
 
 __all__ = ["InverseLoss"]
 
-# MAX_DIST = 22
-# MIN_DIST = 8
-# INTERVAL_DIST = 0.1
-# Embedding = torch.eye(((MAX_DIST
-# for i in range(8, 22.1, .1):
-#     Em
 
 class InverseLoss(nn.Module):
-    def __init__(self, A: float =  20., epsilon: float = 1e-1):
+    def __init__(self, A: float =  20., epsilon: float = 1e-3): # or 1e-4
         super().__init__()
         self.A = A
         self.epsilon = epsilon
 
     def forward(self, pred: torch.Tensor, grnd: torch.Tensor) -> torch.Tensor:
         # which loss function to use now?
+        """
+        6/4/21:
+        have network directly output `pred_inv` and have y_hat be `grnd_inv`
+        """
         pred_inv = self.A / (pred + self.epsilon)
         grnd_inv = self.A / (grnd + self.epsilon)
         return ((pred_inv - grnd_inv)**2).sum()

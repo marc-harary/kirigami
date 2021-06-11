@@ -80,10 +80,10 @@ def evaluate(config: Munch,
         pred = model(sequence)
         loss = float(criterion(pred, ground))
         pred = binarize(pred, thres=thres)
-        pair_map_pred, pair_map_ground = tensor2pairmap(pred), tensor2pairmap(ground)
+        contact_map_pred, contact_map_ground = tensor2pairmap(pred), tensor2pairmap(ground)
         basename = os.path.basename(out_bpseq)
         basename, _ = os.path.splitext(basename)
-        out = get_scores(pair_map_pred, pair_map_ground)
+        out = get_scores(contact_map_pred, contact_map_ground)
         f1_tot += out.f1
         mcc_tot += out.mcc
         loss_tot += loss

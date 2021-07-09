@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 from typing import Tuple, OrderedDict, Optional
 from collections import defaultdict, namedtuple, deque
+from math import ceil
 import torch
 import torch.nn.functional as F
 from kirigami._globals import *
@@ -38,8 +39,14 @@ __all__ = ["concatenate_batch",
            "bpseq2sparse",
            "bpseq2dense",
 
+           "pdb2float",
+           "pdb2inv",
+           "pdb2bin",
+
            "pdb2distmap",
-           "distmap2float"]
+           "distmap2float",
+           "distmap2inv",
+           "distmap2bin"]
 
 
 def concatenate_batch(ipt: torch.tensor, dim: int = 4) -> torch.tensor:
@@ -294,8 +301,6 @@ def st2seqlab(st: str) -> SeqLab:
 
 def st2sparse(st: str,
               dim: int = 2,
-              pad_length: int = 0,
-              dtype: torch.dtype = torch.uint8,
               device: torch.device = torch.device("cpu")) -> torch.tensor:
     """converts `.st`-style string to sparse tensor"""
     seq_lab = st2seqlab(st)
@@ -373,6 +378,7 @@ def distmap2float(dist_map: DistMap,
                   pad_length: int = 0,
                   dtype: torch.dtype = torch.float,
                   device: torch.device = torch.device("cpu")) -> torch.tensor:
+    """converts `DistMap` to float-based tensor"""
     fields = dist_map[(0,0)].__annotations__.keys()
     L = int(len(dist_map)**.5)
     out = torch.zeros((10, L, L))
@@ -381,3 +387,120 @@ def distmap2float(dist_map: DistMap,
     while out.dim() < dim:
         out.unsqueeze_(0)
     return out
+
+
+def distmap2inv(dist_map: DistMap,
+                A: int = 1.0,
+                eps: float = 1e-4,
+                dim: int = 3,
+                pad_length: int = 0,
+                dtype: torch.dtype = torch.float,
+                device: torch.device = torch.device("cpu")) -> torch.tensor:
+    """converts `DistMap` object to inverted float-based tensor"""
+    out = distmap2float(dist_map, dim, pad_length, dtype, device)
+    out += eps
+    out = A / out
+    return out
+
+
+# def distmap2bin(dist_map: DistMap,
+#                 max_dist: float = 22.0, 
+#                 bin_width: float = 0.5,
+#                 dim: int = 4,
+#                 pad_length: int = 0,
+#                 dtype: torch.dtype = torch.uint8,
+#                 device: torch.device = torch.device("cpu")) -> torch.tensor:
+#     """converts `DistMap` object to one-hot encoded tensor"""
+#     actual_length = int(len(dist_map)**.5)
+#     pad_length = max(pad_length, actual_length)
+#     diff_length = pad_length - actual_length
+#     num_bins = int(max_dist/bin_width) + 1
+#     out = torch.zeros((num_bins, N_ATOM_PAIRS, pad_length, pad_length), dtype=dtype, device=device)
+#     for (j, k), dist in dist_map.items():
+#         j, k = j+diff_length, k+diff_length
+#         for i, atom_pair in enumerate(ATOM_PAIRS):
+#             pair_dist = getattr(dist, atom_pair)
+#             pair_dist = min(max(0, pair_dist), max_dist) # clip between 0 and max_dist
+#             idx = int(pair_dist / bin_width)
+#             out[idx, i, j, k] = True
+#     while out.dim() < dim:
+#         out.unsqueeze_(0)
+#     return out
+
+
+def distmap2bin(dist_map: DistMap,
+                max_dist: float = 22.0, 
+                bin_width: float = 0.5,
+                dim: int = 4,
+                pad_length: int = 0,
+                dtype: torch.dtype = torch.uint8,
+                device: torch.device = torch.device("cpu")) -> torch.tensor:
+    """converts `DistMap` object to one-hot encoded tensor"""
+    actual_length = int(len(dist_map)**.5)
+    pad_length = max(pad_length, actual_length)
+    diff_length = pad_length - actual_length
+    beg = diff_length // 2
+    num_bins = int(max_dist//bin_width + 1)
+    full_size = size = (num_bins, N_ATOM_PAIRS, pad_length, pad_length)
+    if (diff := len(full_size) - dim) > 0:
+        full_size = full_size + diff*(1,)
+    out = torch.zeros(size, dtype=dtype, device=device)
+    # idx = torch.zeros((N_ATOM_PAIRS,pad_length,pad_length), device=device)
+    # idx[1,:] = idx[2:] = torch.arange(pad_length, device=device) + beg
+    # v = torch.ones(idx.shape[1], dtype=dtype, device=device)
+    for (j, k), dist in dist_map.items():
+        j, k = j+diff_length, k+diff_length
+        for i, atom_pair in enumerate(ATOM_PAIRS):
+            pair_dist = getattr(dist, atom_pair)
+            pair_dist = min(pair_dist, max_dist) # clip between 0 and max_dist
+            # idx[i, j, k] = int(pair_dist // bin_width)
+            idx = ceil(pair_dist/bin_width) - 1
+            idx = max(idx, 0)
+            out[..., idx, i, j, k] = 1.
+    return out
+
+
+def pdb2float(pdb: str,
+              dim: int = 3,
+              pad_length: int = 0,
+              dtype: torch.dtype = torch.float,
+              device: torch.device = torch.device("cpu")) -> torch.tensor:
+    """converts `PDB` file-basd text to float-based tensor"""
+    return pdb2float(pdb2distmap(pdb), dim, pad_length, dtype, device)
+
+
+def pdb2inv(pdb: str,
+            A: int = 1.0,
+            eps: float = 1e-4,
+            dim: int = 3,
+            pad_length: int = 0,
+            dtype: torch.dtype = torch.float,
+            device: torch.device = torch.device("cpu")) -> torch.tensor:
+    """converts `PDB` file-basd text to inverted float-based tensor"""
+    return pdb2inv(pdb2distmap(pdb), A, eps, dim, pad_length, dtype, device)
+
+
+def pdb2bin(pdb: str,
+            max_dist: float = 22.0, 
+            bin_width: float = 0.5,
+            dim: int = 4,
+            pad_length: int = 0,
+            dtype: torch.dtype = torch.uint8,
+            device: torch.device = torch.device("cpu")) -> torch.tensor:
+    """converts `PDB` filed-based text to one-hot encoded tensor"""
+    return pdb2bin(pdb2distmap(pdb), max_dist, bin_width, dim, pad_length, dtype, device)
+
+
+def pdb2invbin(pdb: str,
+               A: int = 1.0,
+               eps: float = 1e-4,
+               inv_dim: int = 3,
+               bin_dim: int = 4,
+               max_dist: float = 22.0, 
+               bin_width: float = 0.5,
+               pad_length: int = 0,
+               dtype: torch.dtype = torch.uint8,
+               device: torch.device = torch.device("cpu")) -> torch.tensor:
+    """converts `PDB` filed-based text to both float-based and one-hot encoded tensors"""
+    return (pdb2inv(pdb, A, eps, inv_dim, pad_length, dtype, device),
+        pdb2bin(pdb, max_dist, bin_width, bin_dim, pad_length, dtype, device))

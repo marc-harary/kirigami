@@ -240,32 +240,51 @@ def main():
 
     embed_parser = subparsers.add_parser("embed", help="embed various files")
     embed_parser.add_argument("--file-type",
-                              choices=["bpseq", "st"],
+                              choices=["contact", "distance"],
                               required=True,
                               type=str,
                               help="type of file to embed")
     embed_input = embed_parser.add_mutually_exclusive_group()
     embed_input.add_argument("--in-directory",
                              type=Path,
+                             default=None,
                              help="directory of files to embed")
     embed_input.add_argument("--in-list",
                              type=Path,
+                             default=None,
                              help="path to list file")
+    embed_parser.add_argument("--length",
+                              default=512,
+                              type=int,
+                              help="length to pad tensor")
     embed_parser.add_argument("--out-file",
                               default="out.pt",
                               type=Path,
                               help="path to output file")
-    embed_parser.add_argument("--tensor-dim",
+    embed_parser.add_argument("--dim",
                               type=int,
                               default=3, 
                               help="dimensions of singleton tensor")
-    embed_parser.add_argument("--concatenate",
-                              action="store_true",
-                              help="concatenate singletons")
-    embed_parser.add_argument("--pad-length",
-                              type=int,
-                              default=512,
-                              help="size to which to pad all sequences")
+    embed_parser.add_argument("--A",
+                              type=float,
+                              default=1.0,
+                              help="numerator for inverted tensor")
+    embed_parser.add_argument("--eps",
+                              type=float,
+                              default=1e-4,
+                              help="denominator offset")
+    embed_parser.add_argument("--bins",
+                              type=str,
+                              default="torch.arange(4, 22.5, .5)",
+                              help="bins for distance one-hot encoding")
+    # embed_parser.add_argument("--max-dist",
+    #                           type=float,
+    #                           default=22.,
+    #                           help="maximum distance for binning")
+    # embed_parser.add_argument("--bin-width",
+    #                           type=float,
+    #                           default=.5,
+    #                           help="bin width")
     embed_parser.add_argument("--device",
                               choices=["cpu", "cuda"],
                               type=str,
@@ -273,6 +292,10 @@ def main():
     embed_parser.add_argument("--sparse",
                               action="store_true",
                               help="embed tensors as sparse")
+    embed_parser.add_argument("--dtype",
+                              type=str,                              
+                              default="torch.uint8",
+                              help="datatype for tensor")
     embed_parser.set_defaults(func = lambda namespace: Embed.from_namespace(namespace).run())
     
     args = parser.parse_args()

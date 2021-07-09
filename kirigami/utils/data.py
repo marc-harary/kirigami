@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset
 from kirigami.utils.convert import *
 from kirigami._globals import *
+from kirigami._classes import *
 
 
 __all__ = ["EmbeddedDataset",
@@ -135,7 +136,7 @@ class AbstractASCIIDataset(Dataset):
         lab_emb = pairmap2tensor(lab, max_len=self.max_len, device=self.device)
         return seq_emb, lab_emb
 
-    def _load(self, file: str) -> Tuple[str, PairMap]:
+    def _load(self, file: str) -> Tuple[str, ContactMap]:
         with open(file, "r") as f:
             txt = f.read()
         return self.embedding(txt)

@@ -1,77 +1,73 @@
 import argparse
 import os
 from glob import glob
-from typing import Callable, List
+from typing import *
 from pathlib import Path
-
 import torch
 from tqdm import tqdm
-
 from kirigami.utils.data import *
 from kirigami.utils.convert import *
+from kirigami.utils import utils
+from kirigami.distance import Distance
+from kirigami.contact import Contact
 
 
 class Embed:
     """namespace for file embedding"""
 
-    embed_fcn: Callable
     in_files: List[Path]
     out_file: Path
-    tensor_dim: int
-    concatenate: bool
-    pad_length: int
-    device: torch.device
+    wrapper: Union[Distance, Contact]
+    kwargs: Dict[str, Any]
     
     def __init__(self,
-                embed_fcn: Callable,
-                in_files: List[Path],
-                out_file: Path,
-                tensor_dim: int,
-                concatenate: bool,
-                pad_length: int,
-                device: torch.device) -> None:
-        self.embed_fcn = embed_fcn
+                 in_files: List[Path],
+                 out_file: Path,
+                 wrapper: Union[Distance, Contact],
+                 **kwargs) -> None:
         self.in_files = in_files
         self.out_file = out_file
-        self.tensor_dim = tensor_dim
-        self.concatenate = concatenate
-        self.pad_length = pad_length
-        self.device = device
-
-
+        self.wrapper = wrapper
+        self.kwargs = kwargs
+    
     def run(self) -> None:
-        N = len(self.in_files)
-        seq_list = []
-        lab_list = []
-        for i, file in tqdm(enumerate(self.in_files)):
-            with open(file, "r") as f:
-                txt = f.read()
-            seq, lab = self.embed_fcn(txt, dim=self.tensor_dim, pad_length=self.pad_length, device=self.device)
-            if self.concatenate:
-                seq = concatenate_tensor(seq)
-            seq_list.append(seq)
-            lab_list.append(lab)
-        seqs = torch.stack(seq_list)
-        labs = torch.stack(lab_list)
-        dset = torch.utils.data.TensorDataset(seqs, labs)
+        tensor_list = []
+        for file in tqdm(self.in_files):
+            wrapper = self.wrapper.from_file(file)
+            tensor_list.append(wrapper.to_tensor(**self.kwargs))
+        tensor_list = list(zip(*tensor_list))
+        tensor_stacks = [torch.stack(tensors) for tensors in tensor_list]
+        dset = torch.utils.data.TensorDataset(*tensor_stacks)
         torch.save(dset, self.out_file)
-
 
     @classmethod
     def from_namespace(cls, args: argparse.Namespace):
-        if hasattr(args, "in_directory"):
-            in_files = glob(str(args.in_directory / "*"))
+        if args.in_directory is not None:
+            in_files = glob(os.path.join(args.in_directory, "*"))
         elif hasattr(args, "in_list"):
             with open(args.in_list, "r") as f:
                 in_files = f.read().splitlines()
-        if args.file_type == "bpseq":
-            embed_fcn = bpseq2sparse if args.sparse else bpseq2dense
-        elif args.file_type == "st":
-            embed_fcn = st2sparse if args.sparse else st2dense
-        return cls(embed_fcn=embed_fcn,
-                   in_files=in_files,
-                   out_file=args.out_file,
-                   tensor_dim=args.tensor_dim,
-                   concatenate=args.concatenate,
-                   pad_length=args.pad_length,
-                   device=torch.device(args.device))
+                in_files = list(map(lambda string: string.strip(), in_files))
+        if args.file_type == "contact":
+            return cls(in_files=in_files,
+                       out_file=args.out_file,
+                       wrapper=Contact,
+                       dim=args.dim,
+                       length=args.length,
+                       concatenate=args.concatenate,
+                       sparse=args.sparse,
+                       dtype=eval(args.dtype),
+                       device=args.device)
+        elif args.file_type == "distance":
+            return cls(in_files=in_files,
+                       out_file=args.out_file,
+                       wrapper=Distance,
+                       A=args.A,
+                       eps=args.eps,
+                       bins=eval(args.bins),
+                       # max_dist=args.max_dist,
+                       # bin_width=args.bin_width,
+                       dim=args.dim,
+                       length=args.length,
+                       dtype=eval(args.dtype),
+                       device=args.device)

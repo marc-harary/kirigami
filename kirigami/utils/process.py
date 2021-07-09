@@ -1,6 +1,7 @@
 from itertools import permutations
 import torch
 from kirigami._globals import *
+from kirigami._classes import *
 from kirigami.utils.convert import dense2sequence
 
 

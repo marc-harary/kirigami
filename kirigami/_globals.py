@@ -1,5 +1,6 @@
 from collections import defaultdict, namedtuple
 import torch
+from kirigami._classes import Dist
 
 
 __all__ = ["BASE_CHARS",
@@ -19,7 +20,10 @@ __all__ = ["BASE_CHARS",
            "IDX2CHAR",
 
            "CANONICAL_CHARS",
-           "CANONICAL_TUPLES"]
+           "CANONICAL_TUPLES",
+
+           "ATOM_PAIRS",
+           "N_ATOM_PAIRS"]
 
 
 BASE_CHARS = "AUCG"
@@ -45,3 +49,6 @@ CANONICAL_TUPLES = [(BASE_TUPLES[0], BASE_TUPLES[1]),
                     (BASE_TUPLES[3], BASE_TUPLES[2]),
                     (BASE_TUPLES[1], BASE_TUPLES[3]),
                     (BASE_TUPLES[3], BASE_TUPLES[1])]
+
+ATOM_PAIRS = Dist.__annotations__.keys()
+N_ATOM_PAIRS = len(ATOM_PAIRS)

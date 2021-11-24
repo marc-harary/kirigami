@@ -4,3 +4,6 @@ from kirigami.nn.loss import *
 from kirigami.nn.lstm_wrapper import *
 from kirigami.nn.resnet import *
 from kirigami.nn.spot import *
+from kirigami.nn.fork import *
+from kirigami.nn.parallel import *
+from kirigami.nn.utils import *

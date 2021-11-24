@@ -3,7 +3,7 @@ from pathlib import Path
 import argparse
 from kirigami.core.embed import *
 from kirigami.core.train import *
-from kirigami.core.test import *
+# from kirigami.core.test import *
 # from kirigami.predict import *
 
 
@@ -87,6 +87,10 @@ def main():
                             choices=["bpseq-lst","pt-lst","st-lst","pt"],
                             type=str,
                             help="file type of training set")
+    train_data.add_argument("--include-distances",
+                            default=False,
+                            type=bool,
+                            help="dataset includes atomic distances")
     train_data.add_argument("--validation-file",
                             type=Path,
                             help="path to list of validation set")
@@ -240,7 +244,7 @@ def main():
 
     embed_parser = subparsers.add_parser("embed", help="embed various files")
     embed_parser.add_argument("--file-type",
-                              choices=["contact", "distance"],
+                              choices=["contact", "distance", "Zuker"],
                               required=True,
                               type=str,
                               help="type of file to embed")
@@ -277,6 +281,10 @@ def main():
                               type=str,
                               default="torch.arange(4, 22.5, .5)",
                               help="bins for distance one-hot encoding")
+    embed_parser.add_argument("--concatenate",
+                              default=False,
+                              action="store_true",
+                              help="perform outer concatenation")
     # embed_parser.add_argument("--max-dist",
     #                           type=float,
     #                           default=22.,

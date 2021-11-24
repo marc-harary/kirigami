@@ -1,7 +1,11 @@
+from typing import *
+from numbers import Real
 import torch
 import torch.nn as nn
+from kirigami.nn.utils import *
 
-__all__ = ["InverseLoss"]
+
+__all__ = ["InverseLoss", "LossEmbedding", "ForkLoss"]
 
 
 class InverseLoss(nn.Module):
@@ -43,11 +47,27 @@ class LossEmbedding(nn.Module):
                 idx = (dist - self.min_dist) / self.step_dist
                 ipt[:, i, j] = self.embedding_dict[idx]
 
-        
 
-# class OneHotLoss(nn.Module):
-#     def __init__(self):
-#         super().__init__()
-# 
-#     def forward(self, pred: torch.Tensor, grnd: torch.Tensor) -> torch.Tensor:
-        
+class ForkLoss(AtomicModule):
+    def __init__(self,
+                 contact_module: nn.Module,
+                 inv_module: nn.Module,
+                 one_hot_module: nn.Module,
+                 contact_weight: Real,
+                 inv_weight: Real,
+                 one_hot_weight: Real) -> None:
+        assert contact_weight + inv_weight + one_hot_weight == 1
+        super().__init__()
+        self.contact_module = contact_module
+        self.inv_module = inv_module
+        self.one_hot_module = one_hot_module
+        self.contact_weight = contact_weight
+        self.inv_weight = inv_weight
+        self.one_hot_weight = one_hot_weight
+
+    def forward(self, pred: Triple[torch.Tensor], grnd: Triple[torch.Tensor]) -> Real:
+        out = 0.
+        out += self.contact_module(pred[0], grnd[0])
+        out += self.inv_module(pred[1], grnd[1])
+        out += self.one_hot_module(pred[2], grnd[2])
+        return out

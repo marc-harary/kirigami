@@ -7,7 +7,7 @@ from math import ceil
 import torch
 import torch.nn.functional as F
 from kirigami._globals import *
-from kirigami._classes import *
+# from kirigami._classes import *
 
 
 __all__ = ["concatenate_batch",

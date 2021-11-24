@@ -1,20 +1,14 @@
 from typing import *
-from numbers import Real
-from copy import copy
-from math import ceil
-from dataclasses import dataclass, astuple
-from collections import defaultdict
-from pathlib import Path
+from numbers import *
+from dataclasses import dataclass
 import torch
-
-__all__ = ["Distance"]
-
+from abc import ABC
 
 
-class Distance:
+class Distance(ABC):
 
     @dataclass
-    class Pair:
+    class DistancePair:
         PP: float = 0.
         O5O5: float = 0. 
         C5C5: float = 0.
@@ -26,194 +20,91 @@ class Distance:
         O3O3: float = 0.
         NN: float = 0.
 
-    _PdbStr = NewType("_PdbStr", str)
-    _StStr = NewType("_StStr", str)
-    _Sequence = NewType("_Sequence", str)
-    _N_ATOMS = len(astuple(Pair()))
+    @classmethod
+    def from_dict(cls,
+                  pairs: Dict[int,int],
+                  dim: int = 2,
+                  length: Optional[int] = None,
+                  dtype: torch.dtype = torch.uint8,
+                  device: torch.device = torch.device("cpu")) -> "Distance":
+        pass
 
-    _pairs: OrderedDict[Tuple[int,int], Pair]
-    _sequence: _Sequence
+    def to_dict(self) -> Dict[Tuple[int,int], DistancePair]:
+        pass 
 
-    def __init__(self, pairs: OrderedDict[Tuple[int,int],Pair], sequence: _Sequence) -> None:
-        self._pairs = pairs
-        self._sequence = sequence
 
-    @property
-    def sequence(self):
-        return self._sequence
-    
-    def __getitem__(self, idx: Tuple[int,int]) -> Pair:
-        return self._pairs[idx]
 
-    def __len__(self) -> int:
-        return len(self._sequence)
-
-    def _to_float(self,
-                  dim: int = 3,
-                  length: Optional[int] = 0,
-                  dtype: torch.dtype = torch.float,
-                  device: torch.device = torch.device("cpu")) -> torch.Tensor:
-        assert dim >= 3
-        dtype = torch.float32
-        length = max(length, len(self))
-        shape = (10, length, length)
-        shape = (dim-len(shape))*(1,) + shape
-        out_tensor = torch.ones(shape, device=device, dtype=dtype)
-        for i in range(len(self)):
-            for j in range(len(self)):
-                out_tensor[...,:,i,j] = torch.tensor(astuple(self[i,j]))
-        return out_tensor
-
-    def to_inv(self,
-               A: Real = 1.0, 
-               eps: float = 1e-4,
-               dim: int = 3,
-               length: Optional[int] = 0,
-               dtype: torch.dtype = torch.float,
-               device: torch.device = torch.device("cpu")) -> torch.Tensor:
-        out = self._to_float(dim, length, dtype, device)
-        out[out < 0.] = 0. 
-        out += eps
-        out = A / out
-        return out
-    
-   #  def to_one_hot(self,
-   #                 max_dist: Real = 22.0, 
-   #                 bin_width: Real = 0.5,
-   #                 dim: int = 4,
-   #                 length: Optional[int] = None,
-   #                 dtype: torch.dtype = torch.uint8,
-   #                 device: torch.device = torch.device("cpu")) -> torch.Tensor:
-   #      assert dim >= 4
-   #      length = max(length, len(self)) if length else len(self)
-   #      offset = (length-len(self)) // 2
-   #      num_bins = int(max_dist//bin_width + 1)
-   #      shape = (num_bins, len(self.Pair.__annotations__), length, length)
-   #      shape = (dim-len(shape))*(1,) + shape
-   #      out = torch.zeros(shape, dtype=dtype, device=device)
-   #      for i in range(len(self)):
-   #          for j in range(len(self)):
-   #              pair = self[i,j]
-   #              for k, dist in enumerate(astuple(pair)):
-   #                  dist = min(dist, max_dist) # clip between 0 and max_dist
-   #                  idx = ceil(dist/bin_width) - 1
-   #                  idx = max(idx, 0)
-   #                  out[...,idx,k,i+offset,j+offset] = 1.
-   #      return out
-
-    def to_one_hot(self,
-                   bins: Sequence[Real],
-                   dim: int = 4,
-                   length: Optional[int] = None,
-                   dtype: torch.dtype = torch.uint8,
-                   device: torch.device = torch.device("cpu")) -> torch.Tensor:
+class BinDistance(Distance):
+    @classmethod
+    def from_dict(cls,
+                  pairs: Dict[int,int],
+                  bins: Sequence[Real],
+                  dim: int = 4,
+                  length: Optional[int] = None,
+                  dtype: torch.dtype = torch.uint8,
+                  device: torch.device = torch.device("cpu")) -> "BinDistance":
         assert dim >= 4
         if not isinstance(bins, torch.Tensor):
             bins_ = torch.tensor(bins)
         else:
             bins_ = bins
-        length = max(length, len(self)) if length else len(self)
-        offset = (length-len(self)) // 2
-        shape = (len(bins)+1, len(self.Pair.__annotations__), length, length)
-        shape = (dim-len(shape))*(1,) + shape
+
+        idxs = torch.tensor(list(pairs.keys())).T
+        native_length = idxs.max().item() + 1
+        length = max(length, native_length) if length else native_length
+        # shape = (len(bins)+1, 10, length, length)
+        # shape = (dim-len(shape))*(1,) + shape
+        shape = (10, length, length)
         out = torch.zeros(shape, dtype=dtype, device=device)
-        for i in range(len(self)):
-            for j in range(len(self)):
-                pair = self[i,j]
-                for k, dist in enumerate(astuple(pair)):
-                    val, idx = torch.max(dist <= bins_, 0) # gets leftmost `True` if any
-                    idx = idx if val else -1 # max is `False` so dist > last bin
-                    out[...,idx,k,i+offset,j+offset] = 1.
-        return out
+        offset = (length-native_length) // 2
+        dist_tups = list(map(astuple, pairs.values()))
+        dist_tens = torch.tensor(dist_tups, dtype=dtype, device=device)
+        out[:, idxs[:,0], idxs[:,1]] = dist_tens.T
+        out = out.repeat(len(bins_), 1, 1, 1)
+        bins_ = bins_.reshape(1, 1, 1, len(bins_)).T
+        print(torch.where(out > bins_))
+        vals, idxs = torch.max(dist_tens <= bins_, 0) # gets leftmost `True` if any
+        idxs[vals == 0] = -1
+        print(idxs)
+        
+        # for i in range(len(self)):
+        #     for j in range(len(self)):
+        #         pair = self[i,j]
+        #         for k, dist in enumerate(astuple(pair)):
+        #             val, idx = torch.max(dist <= bins_, 0) # gets leftmost `True` if any
+        #             idx = idx if val else -1 # max is `False` so dist > last bin
+        #             out[...,idx,k,i+offset,j+offset] = 1.
+        # return out
 
-    # def to_one_hot(self,
-    #                bins: Sequence[Real],
-    #                dim: int = 4,
-    #                length: Optional[int] = None,
-    #                sparse: bool = False,
-    #                dtype: torch.dtype = torch.uint8,
-    #                device: torch.device = torch.device("cpu")) -> torch.Tensor:
-    #     assert dim >= 4
-    #     if not isinstance(bins, torch.Tensor):
-    #         bins_ = torch.tensor(sorted(bins))
-    #     else:
-    #         bins_ = bins
-    #     length = max(length, len(self)) if length else len(self)
-    #     offset = (length-len(self)) // 2
-    #     shape = (len(bins)+1, self._N_ATOMS, length, length)
-    #     dim_diff = dim - len(shape)
-    #     shape = dim_diff*(1,) + shape
-    #     tot = self._N_ATOMS * len(self)**2
-    #     idxs = torch.zeros((tot, len(shape)), dtype=torch.int, device=device)
-    #     vals = torch.ones(tot)
-    #     idx_row = 0
-    #     for i in range(len(self)):
-    #         for j in range(len(self)):
-    #             pair = self[i,j]
-    #             for k, dist in enumerate(astuple(pair)):
-    #                 val, idx = torch.max(dist <= bins_, 0) # gets leftmost `True` if any
-    #                 idxs[idx_row,-4] = idx if val else len(bins)
-    #                 idxs[idx_row,-3] = k
-    #                 idxs[idx_row,-2] = i + offset 
-    #                 idxs[idx_row,-1] = j + offset 
-    #                 idx_row += 1
-    #     out = torch.sparse_coo_tensor(indices=idxs.T, values=vals, size=shape, device=device, dtype=dtype)
-    #     return out if sparse else out.to_dense()
+    @classmethod
+    def to_dict(self) -> Dict[Tuple[int,int], Distance.DistancePair]:
+        pass
 
-    def to_tensor(self, 
-                  bins: Sequence[Real],
+
+
+class InvDistance(Distance):
+    @classmethod
+    def from_dict(cls,
+                  pairs: Dict[int,int],
                   A: Real = 1.0, 
                   eps: float = 1e-4,
-                  # max_dist: Real = 22.0, 
-                  # bin_width: Real = 0.5,
-                  dim: int = 4,
+                  dim: int = 3,
                   length: Optional[int] = None,
-                  sparse: bool = False,
-                  dtype: torch.dtype = torch.uint8,
-                  device: torch.device = torch.device("cpu")) -> Tuple[torch.Tensor, torch.Tensor]:
-        return (self.to_one_hot(bins=bins,
-                                dim=dim,
-                                length=length,
-                                # sparse=sparse,
-                                dtype=dtype,
-                                device=device),
-               self.to_inv(A=A,
-                           eps=eps,
-                           dim=dim,
-                           length=length,
-                           dtype=dtype,
-                           device=device))
-            
-    @classmethod
-    def from_txts(cls, pdb: _PdbStr) -> "Distance":
-        lines = copy(pdb).splitlines()
-        del lines[0] # drop header
-        length = int(0.5 * (1 + (1 + 2*4*len(lines))**.5)) # quadratic formula
-        sequence = ""
-        pairs = defaultdict(lambda: cls.Pair())
-        for i, line in enumerate(lines):
-            words = line.split()
-            # need to shift modulo b/c file doesn't list redundant pairs
-            # (i.e., no j-i after i-j has been liste)
-            if length and not i % length:
-                sequence += words[0].upper()
-                length -= 1
-            j = int(words[2]) - 1
-            k = int(words[5]) - 1
-            dist_list = list(map(float, words[-10:]))
-            dist = Distance.Pair(*dist_list)
-            pairs[(j,k)] = pairs[(k,j)] = dist
-        return cls(pairs, sequence)
+                  dtype: torch.dtype = torch.float,
+                  device: torch.device = torch.device("cpu")) -> "InvDistance":
+        idxs = torch.tensor(list(pairs.keys()))
+        native_length = idxs.max().item() + 1
+        length = max(length, native_length) if length else native_length
+        shape = (10, length, length)
+        shape = (dim-len(shape))*(1,) + shape
+        out = torch.zeros(shape, dtype=dtype, device=device)
+        dist_tups = list(map(astuple, pairs.values()))
+        dist_tens = torch.tensor(dist_tups, dtype=dtype, device=device)
+        out[:, idxs[:,0], idxs[:,1]] = dist_tens.T
+        out += eps
+        out = A / out
+        return out
 
     @classmethod
-    def from_txt(cls, pdb_path: Path) -> "Distance":
-        with open(pdb_path, "r") as f:
-            txt = f.read()
-        return cls.from_txts(txt) 
-
-    @classmethod
-    def from_file(cls, txt_path: Path) -> "Distance":
-        if txt_path.endswith("txt"):
-            return cls.from_txt(txt_path)
-        else:
-            raise ValueError("Invalid file type")
+    def to_dict(self) -> Dict[Tuple[int,int], Distance.DistancePair]:
+        pass

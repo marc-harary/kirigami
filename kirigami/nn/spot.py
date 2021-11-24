@@ -28,11 +28,13 @@ class SpotNet(torch.nn.Module):
                  res_norm: str = "BatchNorm2d",
                  fc_norm: str = "BatchNorm1d",
                  add_sigmoid: bool = False,
+                 include_zuker: bool = False,
                  **kwargs) -> None:
         super().__init__()
         layer_dict = OrderedDict()
         # initial convolution
-        layer_dict["conv"] = torch.nn.Conv2d(in_channels=8, out_channels=depth_res, kernel_size=3, padding=1)
+        in_channels = 9 if include_zuker else 8
+        layer_dict["conv"] = torch.nn.Conv2d(in_channels=in_channels, out_channels=depth_res, kernel_size=3, padding=1)
         # Block A's 
         resnet_kwargs = kwargs if res_norm == "LayerNorm" else {"num_features": depth_res}
         dilations = [2**(i%max_dilation_exp) for i in range(2*n_res)]

@@ -1,5 +1,6 @@
 import os
 import itertools
+from functools import reduce
 import time
 import logging
 import datetime
@@ -18,12 +19,14 @@ import torch.multiprocessing as mp
 
 import kirigami.nn
 from kirigami._globals import *
-from kirigami.utils.data import BpseqDataset, EmbeddedDataset, StDataset
-from kirigami.utils.convert import *
-from kirigami.utils.process import *
-from kirigami.utils.memory_utils import *
+# from kirigami.utils.data import BpseqDataset, EmbeddedDataset, StDataset
+# from kirigami.utils.convert import *
+# from kirigami.utils.process import *
+# from kirigami.utils.memory_utils import *
 from kirigami.utils.utils import *
-from kirigami import binarize
+from kirigami.nn.utils import *
+# from kirigami.utils.cpp_utils import binarize
+from kirigami.containers import Contact, Distance
 
 
 __all__ = ["Train"] 
@@ -172,16 +175,20 @@ class Train:
             self.log(f"Starting epoch {epoch} at " + str(start))
             length = len(self.training_loader)
             train_loss_tot = 0.
-            batch_iterator = enumerate(self.training_loader)
-            batch_loop = tqdm(batch_iterator) if self.show_batch_bar else batch_iterator
-            for i, (seq, lab) in batch_loop:
-                seq_coll, lab_coll = self.training_collater(seq, lab)
+            batch_loop = tqdm(self.training_loader) if self.show_batch_bar else self.training_loader
+            for i, batch in enumerate(batch_loop):
+                # seq, con = reduce(lambda x, y: y(*x), self.training_collater, (batch[0], batch[1]))
+                ipt, lab = batch[0], batch[1]
                 with autocast(enabled=self.mixed_precision):
                     if self.checkpoint_segments > 0:
-                        pred = torch.utils.checkpoint.checkpoint_sequential(self.model, self.checkpoint_segments, seq_coll)
+                        pred = torch.utils.checkpoint.checkpoint_sequential(self.model,
+                                                                            self.checkpoint_segments,
+                                                                            ipt)
                     else:
-                        pred = self.model(seq_coll)
-                    loss = self.criterion(pred, lab_coll.reshape_as(pred))
+                        pred = self.model(ipt)
+                    if isinstance(con, torch.Tensor):
+                        con = con.reshape_as(pred)
+                    loss = self.criterion(pred, con)
                     loss /= self.iters_to_accumulate
                 scaler.scale(loss).backward()
                 if i % self.iters_to_accumulate == 0:
@@ -200,8 +207,8 @@ class Train:
             delta = end - start
             self.log(f"Training time for epoch {epoch}: {delta.seconds} s")
             self.log(f"Mean training loss for epoch {epoch}: {train_loss_mean}")
-            if self.validation_loader:
-                self.validate(epoch)
+            # if self.validation_loader:
+            #     self.validate(epoch)
             self.log("Memory allocated: " + str(torch.cuda.memory_allocated() / 2**20) + " MB")
             self.log("Memory cached: " + str(torch.cuda.memory_cached() / 2**20) + " MB\n")
 
@@ -218,41 +225,42 @@ class Train:
         batch_loop = tqdm(batch_iterator) if self.show_batch_bar else batch_iterator
 
         with torch.no_grad():
-            for i, (seq, lab) in batch_loop:
-                seq_coll, lab_coll = self.validation_collater(seq, lab)
-                seq_non_cat = seq_coll.squeeze()[:4,:,0]
-                seq_str = dense2sequence(seq_non_cat)
-                seq_length = int(seq_non_cat.sum().item())
-                ground_pairs = int(lab_coll.sum().item() / 2)
+            for i, batch in batch_loop:
+                seq, lab_ground = reduce(lambda x, y: y(*x), self.training_collater, (batch[0], batch[1]))
+                con_ground = Contact.from_tensor((seq, lab_ground))
+                ground_pairs = len(con_ground._pairs)
                 mean_ground_pairs += ground_pairs / n_batch
             
-                raw_pred = self.model(seq_coll)
-                raw_loss = self.criterion(raw_pred, lab_coll.reshape_as(raw_pred))
+                raw_pred = self.model(seq)
+                raw_loss = self.criterion(raw_pred, lab_ground.reshape_as(raw_pred))
                 raw_mean_loss += raw_loss.item() / n_batch
 
                 if isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
                     raw_pred = torch.nn.functional.sigmoid(raw_pred) 
-                
+
                 bin_pred = binarize(lab=raw_pred,
-                                    seq=seq_str,
+                                    seq=con_ground.sequence,
                                     # seq=seq_non_cat,
                                     min_dist=4,
                                     thres_pairs=ground_pairs if self.thres_by_ground_pairs else sys.maxsize,
                                     thres_prob=self.thres_prob,
                                     symmetrize=self.symmetrize,
                                     canonicalize=self.canonicalize)
-                if isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
-                    bin_loss = torch.nn.functional.binary_cross_entropy(bin_pred, lab_coll.reshape_as(bin_pred))
-                else:
-                    bin_loss = self.criterion(bin_pred, lab_coll)
 
-                pred_contact_map = dense2pairmap(bin_pred, seq_length=seq_length)
-                lab_contact_map = dense2pairmap(lab_coll, seq_length=seq_length)
-                scores = get_scores(pred_contact_map, lab_contact_map)
+                if isinstance(self.criterion, torch.nn.BCEWithLogitsLoss):
+                    bin_loss = torch.nn.functional.binary_cross_entropy(bin_pred, lab_ground.reshape_as(bin_pred))
+                else:
+                    bin_loss = self.criterion(bin_pred, lab_ground.reshape_as(bin_pred))
+
+                con_pred = Contact.from_tensor((seq, bin_pred))
+                scores = con_pred.get_scores(con_ground)
                 mean_mcc += scores.mcc / n_batch
                 mean_f1 += scores.f1 / n_batch
                 mean_pairs += scores.pred_pairs / n_batch
                 mean_loss += bin_loss.item() / n_batch
+                # pred_contact_map = dense2pairmap(bin_pred, seq_length=seq_length)
+                # lab_contact_map = dense2pairmap(lab_coll, seq_length=seq_length)
+                # scores = get_scores(pred_contact_map, lab_contact_map)
 
         if mean_mcc > self.best_mcc:
             self.log(f"New optimum at epoch {epoch}")
@@ -317,19 +325,6 @@ class Train:
         elif args.training_filetype == "pt":
             training_set = torch.load(args.training_file)
 
-            train_coll_list = []
-            seq, _ = training_set[0]
-
-            if seq.dtype != torch.float:
-                train_coll_list.append(lambda x, y: (x.float(), y.float()))
-            if seq.device != model_device:
-                train_coll_list.append(lambda x, y: (x.to(model_device), y.to(model_device)))
-            if seq.is_sparse:
-                train_coll_list.append(lambda x, y: (x.to_dense(), y.to_dense()))
-            if seq.size(-1) != seq.size(-2): # sequence is concatenated
-                train_coll_list.append(lambda x, y: (concatenate_batch(x), y))
-
-            training_collater = compose_functions(reversed(train_coll_list))
         training_loader = DataLoader(training_set,
                                      shuffle=args.shuffle,
                                      batch_size=args.batch_size,
@@ -338,8 +333,7 @@ class Train:
 
         validation_loader = None
         if hasattr(args, "validation_file"):
-            validation_collater = lambda x: x
-            if args.validation_data_device == "cuda":
+            if args.validation_device == "cuda":
                 if torch.cuda.is_available():
                     validation_data_device = torch.device("cuda")
                 else:
@@ -363,25 +357,10 @@ class Train:
                                            batch_load=args.batch_load)
             elif args.validation_filetype == "pt":
                 validation_set = torch.load(args.validation_file)
-
-                val_coll_list = []
-                seq, _ = validation_set[0]
-
-                if seq.device != model_device:
-                    val_coll_list.append(lambda x, y: (x.to(model_device), y.to(model_device)))
-                if seq.is_sparse:
-                    val_coll_list.append(lambda x, y: (x.to_dense(), y.to_dense()))
-                if seq.size(-1) != seq.size(-2): # sequence is concatenated
-                    val_coll_list.append(lambda x, y: (concatenate_batch(x), y))
-                if seq.dtype != torch.float:
-                    val_coll_list.append(lambda x, y: (x.float(), y.float()))
-
-                validation_collater = compose_functions(reversed(val_coll_list))
             validation_loader = DataLoader(validation_set, shuffle=False, batch_size=1)
 
-        module_list = []
-        for layer in args.layers:
-            module_list.extend(flatten_module(eval(layer)))
+        module_list = [eval(layer) for layer in args.layers]
+        module_list = sequentialize(module_list)
         model = nn.Sequential(*module_list)
         
         model = model.to(model_device)
@@ -400,9 +379,11 @@ class Train:
                    iters_to_accumulate=args.iters_to_accumulate,
                    checkpoint_segments=args.checkpoint_segments,
                    training_loader=training_loader,
-                   training_collater=training_collater,
+                   # training_collater=lambda ipt: reduce(lambda lhs, rhs: rhs(lhs), train_coll_list, ipt),
+                   training_collater=train_coll_list,
+                   # training_collater=train_collate,
                    validation_loader=validation_loader,
-                   validation_collater=validation_collater,
+                   validation_collater=val_coll_list,
                    validation_device=validation_data_device,
                    log_file=args.log_file,
                    training_checkpoint_file=args.training_checkpoint_file,

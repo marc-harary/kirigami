@@ -5,7 +5,7 @@
 #include <limits.h>
 
 #define BASES "AUGC"
-#define PAIRS std::set<std::string>({"AU", "UA", "CG", "GC", "GA", "AG"})
+#define PAIRS std::set<std::string>({"AU", "UA", "CG", "GC", "GU", "UG"})
 
 using namespace torch::indexing;
 using PairProb = std::pair<double,std::pair<int,int>>;
@@ -64,10 +64,14 @@ torch::Tensor binarize(torch::Tensor lab,
     std::string dotBracket(seqLength, '.');
 
     std::pair<int,int> idxs;
-    int j, k;
     PairProb curPair;
+    int j, k;
     int maxIters = std::min(numPairs, thresPairs);
-    for (int i = 0; i < maxIters; i++) {
+    int counter = 0;    
+    for (int i = 0; i < numPairs; i++) {
+        if (counter == maxIters) {
+            break;
+        }
         curPair = pairProbs[i];
         prob = curPair.first;
         idxs = curPair.second;
@@ -79,6 +83,7 @@ torch::Tensor binarize(torch::Tensor lab,
         out[j][k] = out[k][j] = 1.;
         dotBracket[j-beg] = '(';
         dotBracket[k-beg] = ')';
+        counter++;
     }
 
     while (out.dim() <  lab.dim()) {

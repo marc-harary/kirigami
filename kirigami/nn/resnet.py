@@ -79,7 +79,7 @@ class ResNet(torch.nn.Module):
                  **kwargs) -> None:
         super().__init__()
         block_list = []
-        dilations = dilations or 2*n_blocks*[0]
+        dilations = dilations or 2*n_blocks*[1]
         assert len(dilations) == 2*n_blocks, "Must pass in two dilations per block!"
         for i in range(n_blocks):
             block =  ResNetBlock(p=p,

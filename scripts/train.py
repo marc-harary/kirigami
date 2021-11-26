@@ -25,17 +25,7 @@ from kirigami.nn.utils import *
 from kirigami.utils import binarize
 
 
-# class ZukerModule(nn.Module):
-#     def __init__(self, in_shape=512, out_shape=512):
-#         super().__init__()
-#         self._in_shape = in_shape
-#         self._out_shape = out_shape
-#         self.res = ResNetBlock(p=0.5,
-#                                dilations=None,
-#                                kernel_sizes=None,
-#                                act = None,
-#                                n_channels = None,
-#                                resnt = True)
+PAIRS = {"AU", "UA", "CG", "GC", "GU", "UG"}
 
 
 def concat(fasta):
@@ -53,72 +43,26 @@ def to_str(ipt):
     beg = (total_length - fasta_length) // 2
     end = beg + fasta_length
     _, js = torch.max(ipt_[:,beg:end], 0)
-    return "".join("AUCG"[j] for j in js)
-
-@dataclass
-class Scores:
-    tp: float
-    tn: float
-    fp: float
-    fn: float
-    f1: float
-    mcc: float
-    ground_pairs: int
-    pred_pairs: int
+    return "".join("ACGU"[j] for j in js)
 
 
-# def get_scores(pred, grd, length):
-#     total = length * (length-1) / 2
-# 
-#     total_length = pred_.shape[0]
-#     beg = (total_length - length) // 2
-#     end = beg + length
-# 
-#     vals, idxs = torch.max(pred[:,beg:end], 0)
-#     prd_pairs = set()
-#     for i, (val, idx) in enumerate(zip(vals, idxs)):
-#         if val == 1:
-#             prd_pairs.add((i, idx))
-# 
-#     vals, idxs = torch.max(grd[:,beg:end], 0)
-#     grd_pairs = set()
-#     for i, (val, idx) in enumerate(zip(vals, idxs)):
-#         if val == 1:
-#             grd_pairs.add((i, idx))
-# 
-#     n_prd, n_grd = len(prd_pairs), len(grd_pairs)
-#     tp = float(len(prd_pairs.intersection(grd_pairs)))
-#     fp = len(prd_pairs) - tp
-#     fn = len(grd_pairs) - tp
-#     tn = total - tp - fp - fn
-#     mcc = f1 = 0. 
-#     if n_prd > 0 and n_grd > 0:
-#         sn = tp / (tp+fn)
-#         pr = tp / (tp+fp)
-#         if tp > 0:
-#             f1 = 2*sn*pr / (pr+sn)
-#         if (tp+fp) * (tp+fn) * (tn+fp) * (tn+fn) > 0:
-#             mcc = (tp*tn-fp*fn) / ((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))**.5
-#     return Scores(tp, tn, fp, fn, f1, mcc, n_grd, n_prd)
-
-
-def get_scores(pred, grd):
-    length = pred.shape[0]
-
-    total = length * (length-1) / 2
-
-    vals, idxs = torch.max(pred, 0)
-    prd_pairs = set()
+def to_pairs(ipt, seq_len):
+    beg = (MAX_SIZE - seq_len) // 2
+    end = beg + seq_len
+    ipt = ipt[beg:end, beg:end]
+    vals, idxs = torch.max(ipt, 0)
+    grd_set = set()
     for i, (val, idx) in enumerate(zip(vals, idxs)):
-        if val == 1:
-            prd_pairs.add((i, idx.item()))
+        if val == 1 and i < idx:
+            grd_set.add((i, idx.item()))
+    return grd_set
 
-    vals, idxs = torch.max(grd, 0)
-    grd_pairs = set()
-    for i, (val, idx) in enumerate(zip(vals, idxs)):
-        if val == 1:
-            grd_pairs.add((i, idx.item()))
 
+MAX_SIZE = 512
+
+
+def get_scores(prd_pairs, grd_pairs, seq_len):
+    total = seq_len * (seq_len-1) / 2
     n_prd, n_grd = len(prd_pairs), len(grd_pairs)
     tp = float(len(prd_pairs.intersection(grd_pairs)))
     fp = len(prd_pairs) - tp
@@ -132,9 +76,62 @@ def get_scores(pred, grd):
             f1 = 2*sn*pr / (pr+sn)
         if (tp+fp) * (tp+fn) * (tn+fp) * (tn+fn) > 0:
             mcc = (tp*tn-fp*fn) / ((tp+fp)*(tp+fn)*(tn+fp)*(tn+fn))**.5
-    return Scores(tp, tn, fp, fn, f1, mcc, n_grd, n_prd)
+    return {"tp": tp,
+            "tn": tn,
+            "fp": fp,
+            "fn": fn,
+            "f1": f1,
+            "mcc": mcc,
+            "n_grd": n_grd,
+            "n_prd": n_prd}
 
 
+def binarize(lab_,
+             seq: str,
+             thres_pairs: int,
+             thres_prob: float,
+             min_dist: int = 4,
+             symmetrize: bool = True,
+             canonicalize: bool = True):
+
+    full_len = lab_.shape[1]
+    seq_len = len(seq) 
+    beg = (full_len - seq_len) // 2
+    end = beg + seq_len
+    lab = lab_.squeeze()[beg:end, beg:end]
+    if symmetrize:
+        lab = lab + lab.T
+    lab = lab.ravel()
+
+    # get 1D indices of sorted probs
+    idxs = lab.argsort(descending=True)
+    # convert 1D indices back to 2D
+    ii = torch.div(idxs, seq_len, rounding_mode="floor")
+    jj = (idxs % seq_len)
+    # filter idxs that are too close
+    mask = abs(ii-jj) >= min_dist
+    ii = ii[mask].tolist()
+    jj = jj[mask].tolist()
+
+    # return `thres_pairs` number of idxs
+    kept = torch.zeros(seq_len, dtype=bool)
+    pair_idx = out_count = 0 
+    out_set = set()
+    out_tensor = torch.zeros_like(lab_)
+    
+    while out_count < thres_pairs and pair_idx < len(ii):
+        i, j = ii[pair_idx], jj[pair_idx]
+        pair_idx += 1
+        if kept[i] or kept[j] or (canonicalize and seq[i]+seq[j] not in PAIRS):
+        # if canonicalize and seq[i]+seq[j] not in PAIRS:
+            continue
+        out_set.add(tuple(sorted((i, j))))
+        # out_set.add((j, i))
+        kept[i] = kept[j] = True
+        out_tensor[i+beg, j+beg] = out_tensor[j+beg, i+beg] = 1
+        out_count += 1
+    
+    return out_tensor, out_set
 
 
 
@@ -143,7 +140,7 @@ def main():
         txt = f.read()
         p = munchify(json.loads(txt))
 
-    logging.basicConfig(format="%(asctime)s\n%(message)s\n",
+    logging.basicConfig(format="%(asctime)s\n%(message)s",
                         stream=sys.stdout,
                         level=logging.INFO)
     logging.info("Run with config:\n"+txt) 
@@ -175,7 +172,7 @@ def main():
     g.BEST_MCC = -float("inf")
     g.BEST_LOSS = float("inf") 
     g.CRIT = eval(p.criterion)()
-    g.OPT = eval(p.optimizer)(g.MODEL.parameters())
+    g.OPT = eval(p.optimizer)(g.MODEL.parameters(), lr=p.lr)
     g.SCALER = GradScaler()
     g.TR_LOADER = DataLoader(tr_set, shuffle=True, batch_size=p.batch_size)
     g.TR_LEN = len(tr_set)
@@ -189,23 +186,20 @@ def main():
         logging.info(f"Beginning epoch {epoch}")
         loss_tot = 0.
 
-        for i, batch in enumerate(tqdm(g.TR_LOADER)):
+        for i, batch in enumerate(tqdm(g.TR_LOADER, disable=not p.bar)):
+
+            fasta, thermo, con = batch
+            fasta = fasta.to_dense().float()
+            con = con.to_dense().float().reshape(-1, MAX_SIZE, MAX_SIZE)
+            ipt = concat(fasta)
             if p.thermo:
-                fasta, thermo, con = batch
-                # dense->sparse, uint8->float, sparse to concat 
-                fasta = concat(fasta.to_dense().float())
-                con = con.to_dense().float()
                 thermo = thermo.to_dense()
                 thermo = thermo.unsqueeze(1)
-                fasta = torch.cat((thermo, fasta), 1)
-            else:
-                fasta, con = batch
-                fasta = concat(fasta.to_dense().float())
-                con = con.to_dense().float()
+                ipt = torch.cat((thermo, ipt), 1)
 
             with autocast(enabled=p.mix_prec):
                 if p.chkpt_seg > 0:
-                    pred = checkpoint_sequential(g.MODEL, p.chkpt_seg, fasta)
+                    pred = checkpoint_sequential(g.MODEL, p.chkpt_seg, ipt)
                 else:
                     pred = g.MODEL(ipt)
                 con = con.reshape_as(pred)
@@ -238,6 +232,7 @@ def main():
         ######## validation #########
 
         if epoch % p.eval_freq > 0:
+            print("\n\n")
             continue
 
         start = datetime.datetime.now()
@@ -247,54 +242,44 @@ def main():
         f1_mean = prd_pairs_mean = grd_pairs_mean = 0
 
         with torch.no_grad():
-            for i, batch in enumerate(tqdm(g.VL_LOADER)):
+            for i, batch in enumerate(tqdm(g.VL_LOADER, disable=not p.bar)):
+                fasta, thermo, con = batch
+                fasta = fasta.to_dense()
+                seq = to_str(fasta)
+                con = con.to_dense().float().reshape(MAX_SIZE, MAX_SIZE)
+                ipt = concat(fasta.float())
                 if p.thermo:
-                    fasta2d, thermo, con_grd = batch
-                    fasta2d = fasta2d.to_dense()
-                    con_grd = con_grd.to_dense().float().reshape(512, 512)
                     thermo = thermo.to_dense()
                     thermo = thermo.unsqueeze(1)
-                    fasta = concat(fasta2d.float())
-                    fasta = torch.cat((thermo, fasta), 1)
-                else:
-                    fasta, con = batch
-                    fasta2d = fasta.to_dense()
-                    fasta = concat(fasta2d.float())
-                    con_grd = con.to_dense().float().reshape(512, 512)
+                    ipt = torch.cat((thermo, ipt), 1)
                     
-                raw_pred = g.MODEL(fasta).squeeze()
-                raw_loss = g.CRIT(raw_pred, con_grd)
-
+                raw_pred = g.MODEL(ipt).squeeze()
+                raw_loss = g.CRIT(raw_pred, con)
                 if isinstance(g.CRIT, torch.nn.BCEWithLogitsLoss):
                     raw_pred = torch.nn.functional.sigmoid(raw_pred) 
 
-                thres_pairs = int(con_grd.sum().item() / 2)
-                seq = to_str(fasta2d)
-                beg = (fasta2d.shape[-1] - len(seq)) // 2
-                end = beg + len(seq)
-
-                bin_pred = binarize(lab=raw_pred,
-                                    seq=seq,
-                                    min_dist=4,
-                                    thres_pairs=thres_pairs,
-                                    thres_prob=0,
-                                    symmetrize=True,
-                                    canonicalize=True)
+                grd_set = to_pairs(con, len(seq))
+                bin_pred, prd_set = binarize(lab_=raw_pred,
+                                             seq=seq,
+                                             min_dist=4,
+                                             thres_pairs=len(grd_set),
+                                             thres_prob=0,
+                                             symmetrize=p.symmetrize,
+                                             canonicalize=p.canonicalize)
 
                 if isinstance(g.CRIT, torch.nn.BCEWithLogitsLoss):
-                    bin_loss = binary_cross_entropy(bin_pred, con_grd)
+                    bin_loss = binary_cross_entropy(bin_pred, con)
                 else:
-                    bin_loss = g.CRIT(bin_pred, con_grd)
+                    bin_loss = g.CRIT(bin_pred, con)
 
-                bin_scores = get_scores(bin_pred[beg:end, beg:end], con_grd[beg:end, beg:end])
-                # raw_scores = get_scores(raw_pred, con_grd, length=len(seq))
+                bin_scores = get_scores(prd_set, grd_set, len(seq))
 
                 raw_loss_mean += raw_loss.item() / g.VL_LEN
                 bin_loss_mean += bin_loss.item() / g.VL_LEN
-                mcc_mean += bin_scores.mcc / g.VL_LEN
-                f1_mean += bin_scores.f1 / g.VL_LEN
-                prd_pairs_mean += bin_scores.pred_pairs / g.VL_LEN
-                grd_pairs_mean += thres_pairs / g.VL_LEN
+                mcc_mean += bin_scores["mcc"] / g.VL_LEN
+                f1_mean += bin_scores["f1"] / g.VL_LEN
+                prd_pairs_mean += bin_scores["n_prd"] / g.VL_LEN
+                grd_pairs_mean += bin_scores["n_grd"] / g.VL_LEN
 
 
         delta = datetime.datetime.now() - start

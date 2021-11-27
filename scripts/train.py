@@ -26,6 +26,7 @@ from kirigami.utils import binarize
 
 
 PAIRS = {"AU", "UA", "CG", "GC", "GU", "UG"}
+MAX_SIZE = 512
 
 
 def concat(fasta):
@@ -56,9 +57,6 @@ def to_pairs(ipt, seq_len):
         if val == 1 and i < idx:
             grd_set.add((i, idx.item()))
     return grd_set
-
-
-MAX_SIZE = 512
 
 
 def get_scores(prd_pairs, grd_pairs, seq_len):
@@ -100,7 +98,7 @@ def binarize(lab_,
     end = beg + seq_len
     lab = lab_.squeeze()[beg:end, beg:end]
     if symmetrize:
-        lab = lab + lab.T
+        lab = (lab + lab.T) / 2
     lab = lab.ravel()
 
     # get 1D indices of sorted probs
@@ -145,7 +143,7 @@ def main():
                         level=logging.INFO)
     logging.info("Run with config:\n"+txt) 
 
-    # stores "global" variables (objects) for training
+    # stores "global" for training
     g = Munch()
 
     ####### construct all objects for training ####### 
@@ -158,7 +156,7 @@ def main():
     model = nn.Sequential(*module_list)
     model = model.to(DEVICE)
     N = torch.cuda.device_count()
-    if model == torch.device("cuda") and N > 1:
+    if DEVICE == torch.device("cuda") and N > 1:
         model = nn.DataParallel(model, output_device=[1])
 
     # load data and copy into `DataLoader`'s

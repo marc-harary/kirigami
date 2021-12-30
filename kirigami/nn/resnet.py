@@ -31,6 +31,7 @@ class ResNetBlock(torch.nn.Module):
                                           act=act,
                                           norm=norm,
                                           **kwargs)
+        # self.act_norm_drop1 = eval(act)()
         self.conv1 = torch.nn.Conv2d(in_channels=n_channels,
                                      out_channels=n_channels,
                                      kernel_size=kernel_sizes[0],
@@ -40,6 +41,7 @@ class ResNetBlock(torch.nn.Module):
                                           act=act,
                                           norm=norm,
                                           **kwargs)
+        # self.act_norm_drop2 = eval(act)()
         self.conv2 = torch.nn.Conv2d(in_channels=n_channels,
                                      out_channels=n_channels,
                                      kernel_size=kernel_sizes[1],
@@ -62,22 +64,63 @@ class ResNetBlock(torch.nn.Module):
         return round((dilation * (kernel_size - 1)) / 2)
 
 
-class ResNet(torch.nn.Module):
-    """implements ResNet"""
-    
-    blocks: Sequential
+# class ResNet(torch.nn.Module):
+#     """implements ResNet"""
+#     
+#     blocks: Sequential
+# 
+#     def __init__(self,
+#                  n_blocks: int,
+#                  p: float = 0.5,
+#                  dilations: Optional[List[int]] = None,
+#                  kernel_sizes: Tuple[int,int] = (3,5),
+#                  act: str = "ELU",
+#                  norm: str = "BatchNorm2d",
+#                  n_channels: int = 8,
+#                  resnet: bool = True,
+#                  **kwargs) -> None:
+#         super().__init__()
+#         block_list = []
+#         dilations = dilations or 2*n_blocks*[1]
+#         assert len(dilations) == 2*n_blocks, "Must pass in two dilations per block!"
+#         for i in range(n_blocks):
+#             block =  ResNetBlock(p=p,
+#                                  dilations=dilations[2*i:2*(i+1)],
+#                                  kernel_sizes=kernel_sizes,
+#                                  act=act,
+#                                  norm=norm,
+#                                  n_channels=n_channels,
+#                                  resnet=resnet,
+#                                  **kwargs) 
+#             block_list.append(block)
+#         self.blocks = Sequential(*block_list) 
+#     
+#     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
+#         return self.blocks(ipt)
 
+
+class ResNet(torch.nn.Module):
+
+    """Implements ResNet"""
+    
     def __init__(self,
                  n_blocks: int,
+                 in_channels: int = 8,
+                 n_channels: int = 8,
                  p: float = 0.5,
                  dilations: Optional[List[int]] = None,
                  kernel_sizes: Tuple[int,int] = (3,5),
                  act: str = "ELU",
                  norm: str = "BatchNorm2d",
-                 n_channels: int = 8,
                  resnet: bool = True,
                  **kwargs) -> None:
         super().__init__()
+        if norm == "BatchNorm2d":
+            kwargs["num_channels"] = n_channels
+        self.conv_init = torch.nn.Conv2d(in_channels=in_channels,
+                                         out_channels=n_channels,
+                                         kernel_size=kernel_sizes[0],
+                                         padding=1)
         block_list = []
         dilations = dilations or 2*n_blocks*[1]
         assert len(dilations) == 2*n_blocks, "Must pass in two dilations per block!"
@@ -92,6 +135,15 @@ class ResNet(torch.nn.Module):
                                  **kwargs) 
             block_list.append(block)
         self.blocks = Sequential(*block_list) 
-    
+        self.conv_final = torch.nn.Conv2d(in_channels=n_channels,
+                                          out_channels=1,
+                                          kernel_size=kernel_sizes[0],
+                                          padding=1)
+        self.sigmoid = Sigmoid()
+        
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
-        return self.blocks(ipt)
+        opt = self.conv_init(ipt)
+        opt = self.blocks(opt)
+        opt = self.conv_final(opt)
+        opt = self.sigmoid(opt)
+        return opt

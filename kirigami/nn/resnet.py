@@ -116,7 +116,7 @@ class ResNet(torch.nn.Module):
                  **kwargs) -> None:
         super().__init__()
         if norm == "BatchNorm2d":
-            kwargs["num_channels"] = n_channels
+            kwargs["num_features"] = n_channels
         self.conv_init = torch.nn.Conv2d(in_channels=in_channels,
                                          out_channels=n_channels,
                                          kernel_size=kernel_sizes[0],

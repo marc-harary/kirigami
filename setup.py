@@ -6,10 +6,5 @@ setup(name="kirigami",
       description="RNA secondary structure prediction via deep learning",
       author="Marc Harary",
       author_email="marc.harary@yale.edu",
-      packages=find_packages(),
-      entry_points = {"console_scripts": ["kirigami = kirigami.__main__:main"]},
-      # ext_modules=[CppExtension("kirigami.utils.cpp_utils", ["kirigami/src/convert/convert.cpp"])],
-      # cmdclass={"build_ext": BuildExtension}
-      ext_modules=[CppExtension("kirigami.cpp_utils", ["kirigami/src/binarize.cpp"])],
-      cmdclass={"build_ext": BuildExtension}
+      packages=find_packages()
 )

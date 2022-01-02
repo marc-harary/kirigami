@@ -9,13 +9,11 @@ __all__ = ["ResNetBlock", "ResNet"]
 
 class ResNetBlock(torch.nn.Module):
     """implements ResNet unit"""
-
     resnet: bool
     conv1: Module
     act_norm_drop1: Module
     conv2: Module
     act_norm_drop2: Module
-
     def __init__(self,
                  p: float,
                  dilations: Tuple[int,int],
@@ -64,45 +62,8 @@ class ResNetBlock(torch.nn.Module):
         return round((dilation * (kernel_size - 1)) / 2)
 
 
-# class ResNet(torch.nn.Module):
-#     """implements ResNet"""
-#     
-#     blocks: Sequential
-# 
-#     def __init__(self,
-#                  n_blocks: int,
-#                  p: float = 0.5,
-#                  dilations: Optional[List[int]] = None,
-#                  kernel_sizes: Tuple[int,int] = (3,5),
-#                  act: str = "ELU",
-#                  norm: str = "BatchNorm2d",
-#                  n_channels: int = 8,
-#                  resnet: bool = True,
-#                  **kwargs) -> None:
-#         super().__init__()
-#         block_list = []
-#         dilations = dilations or 2*n_blocks*[1]
-#         assert len(dilations) == 2*n_blocks, "Must pass in two dilations per block!"
-#         for i in range(n_blocks):
-#             block =  ResNetBlock(p=p,
-#                                  dilations=dilations[2*i:2*(i+1)],
-#                                  kernel_sizes=kernel_sizes,
-#                                  act=act,
-#                                  norm=norm,
-#                                  n_channels=n_channels,
-#                                  resnet=resnet,
-#                                  **kwargs) 
-#             block_list.append(block)
-#         self.blocks = Sequential(*block_list) 
-#     
-#     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
-#         return self.blocks(ipt)
-
-
 class ResNet(torch.nn.Module):
-
     """Implements ResNet"""
-    
     def __init__(self,
                  n_blocks: int,
                  in_channels: int = 8,
@@ -115,7 +76,7 @@ class ResNet(torch.nn.Module):
                  resnet: bool = True,
                  **kwargs) -> None:
         super().__init__()
-        if norm == "BatchNorm2d":
+        if norm in ["BatchNorm2d", "InstanceNorm2d"]:
             kwargs["num_features"] = n_channels
         self.conv_init = torch.nn.Conv2d(in_channels=in_channels,
                                          out_channels=n_channels,

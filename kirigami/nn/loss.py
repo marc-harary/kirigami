@@ -5,7 +5,7 @@ import torch.nn as nn
 from kirigami.nn.utils import *
 
 
-__all__ = ["InverseLoss", "LossEmbedding", "ForkLoss"]
+__all__ = ["InverseLoss", "LossEmbedding", "ForkLoss", "WeightLoss"]
 
 
 class InverseLoss(nn.Module):
@@ -71,3 +71,21 @@ class ForkLoss(AtomicModule):
         out += self.inv_module(pred[1], grnd[1])
         out += self.one_hot_module(pred[2], grnd[2])
         return out
+
+
+class WeightLoss(nn.Module):
+    """Implements weighted binary cross-entropy loss"""
+    def __init__(self, weight: float) -> None:
+        super().__init__()
+        assert 0.0 <= weight <= 1.0
+        self._weight = weight
+        self._loss = nn.BCELoss(reduction="none")
+
+    def forward(self,
+                prd: torch.Tensor,
+                grd: torch.Tensor) -> torch.Tensor:
+        loss = self._loss(prd, grd)
+        loss[grd == 1] *= self._weight
+        loss[grd == 0] *= (1 - self._weight)
+        # return loss.mean()
+        return loss.sum()

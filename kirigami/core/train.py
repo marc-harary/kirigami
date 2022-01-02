@@ -64,7 +64,7 @@ def train(notes=None, **kwargs) -> None:
                              batch_sampler=g.SAMPLER,
                              collate_fn=partial(collate_fn, device=g.DEVICE))
     g.TR_LEN = len(tr_set)
-    g.VL_LOADER = DataLoader(vl_set, shuffle=False, batch_size=1)
+    g.VL_LOADER = DataLoader(vl_set, collate_fn=partial(collate_fn, device=g.DEVICE))
     g.VL_LEN = len(vl_set)
 
 
@@ -76,15 +76,16 @@ def train(notes=None, **kwargs) -> None:
 
         for i, (fasta, thermo, con) in enumerate(tqdm(g.TR_LOADER, disable=not p.bar)):
             if p.thermo:
-                thermo = thermo.to_dense()
                 thermo = thermo.unsqueeze(1)
-                ipt = torch.cat((thermo, ipt), 1)
+                ipt = torch.cat((thermo, fasta), 1)
+            else:
+                ipt = fasta
 
             with autocast(enabled=p.mix_prec):
                 if p.chkpt_seg > 0:
-                    pred = checkpoint_sequential(g.MODEL, p.chkpt_seg, fasta)
+                    pred = checkpoint_sequential(g.MODEL, p.chkpt_seg, ipt)
                 else:
-                    pred = g.MODEL(fasta)
+                    pred = g.MODEL(ipt)
                 pred = (pred + torch.transpose(pred, 2, 3)) / 2
                 con = con.reshape_as(pred)
                 loss = g.CRIT(pred, con)
@@ -125,25 +126,17 @@ def train(notes=None, **kwargs) -> None:
         raw_loss_mean = bin_loss_mean = mcc_mean = 0
         f1_mean = prd_pairs_mean = grd_pairs_mean = 0
         with torch.no_grad():
-            for i, batch in enumerate(tqdm(g.VL_LOADER, disable=not p.bar)):
-                fasta, thermo, con = batch
-                # delete below
-                fasta, thermo, con = fasta.cuda(), thermo.cuda(), con.cuda()
-                # delete above
-                fasta = fasta.to_dense()
-                seq = fasta2str(fasta)
-                # con = con.to_dense().float().reshape(MAX_SIZE, MAX_SIZE)
-                # con = con.to_dense().float().unsqueeze(0)
-                con = con.to_dense().float().squeeze()
-                ipt = concat(fasta.float())
+            for i, (fasta, thermo, con) in enumerate(tqdm(g.VL_LOADER, disable=not p.bar)):
                 if p.thermo:
-                    thermo = thermo.to_dense()
                     thermo = thermo.unsqueeze(1)
-                    ipt = torch.cat((thermo, ipt), 1)
-                    
-                raw_pred = g.MODEL(ipt).squeeze()
-                raw_pred = (raw_pred + raw_pred.T) / 2
-                raw_loss = g.CRIT(raw_pred, con)
+                    ipt = torch.cat((thermo, fasta), 1)
+                else:
+                    ipt = fasta
+
+                prd = g.MODEL(ipt)
+                prd = (prd + torch.transpose(prd, 2, 3)) / 2
+                con = con.reshape_as(prd)
+                raw_loss = g.CRIT(prd, con)
 
                 # used for mixed precision only (PyTorch doesn't tolerate 
                 # calling BCELoss directly with mixed precision. See documention
@@ -151,22 +144,16 @@ def train(notes=None, **kwargs) -> None:
                 if isinstance(g.CRIT, torch.nn.BCEWithLogitsLoss):
                     raw_pred = torch.nn.functional.sigmoid(raw_pred) 
 
+                seq = fasta2str(fasta)
                 grd_set = grd2set(con)
-                prd_set = prd2set(ipt=raw_pred,
+                prd_set = prd2set(ipt=prd,
                                   seq=seq,
                                   thres_pairs=len(grd_set),
                                   min_dist=4,
                                   min_prob=.5)
-
-                # if isinstance(g.CRIT, torch.nn.BCEWithLogitsLoss):
-                #     bin_loss = binary_cross_entropy(bin_pred, con)
-                # else:
-                #     bin_loss = g.CRIT(bin_pred, con)
-
                 bin_scores = get_scores(prd_set, grd_set, len(seq))
 
                 raw_loss_mean += raw_loss.item() / g.VL_LEN
-                # bin_loss_mean += bin_loss.item() / g.VL_LEN
                 mcc_mean += bin_scores["mcc"] / g.VL_LEN
                 f1_mean += bin_scores["f1"] / g.VL_LEN
                 prd_pairs_mean += bin_scores["n_prd"] / g.VL_LEN

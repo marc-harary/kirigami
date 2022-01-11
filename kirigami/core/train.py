@@ -25,7 +25,7 @@ from kirigami.utils.sampler import *
 
 def train(notes=None, **kwargs) -> None:
     p = munchify(kwargs)
-    logging.basicConfig(format="%(asctime)s\n%(message)s",
+    logging.basicConfig(format="%(message)s",
                         stream=sys.stdout,
                         level=logging.INFO)
     logging.info("Run with config:\n" + str(kwargs).replace(", ", ",\n"))
@@ -66,11 +66,26 @@ def train(notes=None, **kwargs) -> None:
     g.TR_LEN = len(tr_set)
     g.VL_LOADER = DataLoader(vl_set, collate_fn=partial(collate_fn, device=g.DEVICE))
     g.VL_LEN = len(vl_set)
+    g.START_EPOCH = 0
+    g.TR_LOSS_HISTORY = {}
+    g.VL_LOSS_HISTORY = {}
+    g.MCC_HISTORY = {}
 
+
+    # reload model if resume
+    if p.resume:
+        checkpoint = torch.load(p.tr_chk) 
+        g.MODEL.load_state_dict(checkpoint["model_state_dict"])
+        g.OPT.load_state_dict(checkpoint["optimizer_state_dict"])
+        g.START_EPOCH = checkpoint["epoch"] + 1
+        g.BEST_MCC = checkpoint["best_mcc"]
+        logging.info(f"Resuming at epoch {g.START_EPOCH+1} with best MCC {g.BEST_MCC}")
+        
 
     ####### main training (and validation) loop ####### 
-    for epoch in range(p.epochs):
+    for epoch in range(g.START_EPOCH, p.epochs):
         start = datetime.datetime.now()
+        print(start)
         logging.info(f"Beginning epoch {epoch}")
         loss_tot = 0.
 
@@ -99,12 +114,14 @@ def train(notes=None, **kwargs) -> None:
             loss_tot += loss.item()
 
         loss_avg = loss_tot / len(g.TR_LOADER) 
-        # torch.save({"epoch": epoch,
-        #             "model_state_dict": g.MODEL.state_dict(),
-        #             "optimizer_state_dict": g.OPT.state_dict(),
-        #             "loss": loss_avg},
-        #            p.tr_chk)
-        
+        g.TR_LOSS_HISTORY[epoch] = loss_avg 
+        if p.tr_chk:
+            torch.save({"epoch": epoch,
+                        "model_state_dict": g.MODEL.state_dict(),
+                        "optimizer_state_dict": g.OPT.state_dict(),
+                        "best_mcc": g.BEST_MCC,
+                        "cur_loss": loss_avg},
+                       p.tr_chk)
         end = datetime.datetime.now()
         delta = end - start
         mess = (f"Training time for epoch {epoch}: {delta.seconds}s\n" +
@@ -159,28 +176,30 @@ def train(notes=None, **kwargs) -> None:
                 prd_pairs_mean += bin_scores["n_prd"] / g.VL_LEN
                 grd_pairs_mean += bin_scores["n_grd"] / g.VL_LEN
 
-
+        g.MCC_HISTORY[epoch] = mcc_mean
+        g.VL_LOSS_HISTORY[epoch] = raw_loss_mean
         delta = datetime.datetime.now() - start
         mess = (f"Validation time for epoch {epoch}: {delta.seconds}s\n" +
                 f"Raw mean validation loss for epoch {epoch}: {raw_loss_mean}\n" +
                 f"Mean MCC for epoch {epoch}: {mcc_mean}\n" +
                 f"Mean ground pairs: {grd_pairs_mean}\n" +
                 f"Mean predicted pairs: {prd_pairs_mean}\n")
-                # f"Binarized mean validation loss for epoch {epoch}: {bin_loss_mean}\n")
         if mcc_mean > g.BEST_MCC:
-            logging.info(f"New optimum at epoch {epoch}")
             g.BEST_MCC = mcc_mean
             g.BEST_LOSS = bin_loss_mean
-            # torch.save({"epoch": epoch,
-            #             "model_state_dict": g.MODEL.state_dict(),
-            #             "optimizer_state_dict": g.OPT.state_dict(),
-            #             "grd_pairs_mean": grd_pairs_mean,
-            #             "prd_pairs_mean": prd_pairs_mean,
-            #             "mcc_mean": mcc_mean,
-            #             "f1_mean": f1_mean,
-            #             "raw_loss_mean": raw_loss_mean,
-            #             "bin_loss_mean": bin_loss_mean},
-            #            p.vl_chk)
+            if p.vl_chk:
+                torch.save({"epoch": epoch,
+                            "model_state_dict": g.MODEL.state_dict(),
+                            "optimizer_state_dict": g.OPT.state_dict(),
+                            # "tr_loss_history": g.TR_LOSS_HISTORY,
+                            # "vl_loss_history": g.VL_LOSS_HISTORY,
+                            "mcc_history": g.MCC_HISTORY,
+                            "grd_pairs_mean": grd_pairs_mean,
+                            "prd_pairs_mean": prd_pairs_mean,
+                            "mcc_mean": mcc_mean,
+                            "f1_mean": f1_mean,
+                            "raw_loss_mean": raw_loss_mean},
+                           p.vl_chk)
             mess += f"*****NEW MAXIMUM MCC*****\n"
         mess += "\n\n"
         logging.info(mess)

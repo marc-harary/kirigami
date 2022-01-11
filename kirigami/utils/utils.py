@@ -24,7 +24,10 @@ def collate_fn(batch_list, device: torch.device):
         offset = (pad.item() - seq_.shape[1]) // 2
 
         seq_idxs = seq_.coalesce().indices()
-        thermo_idxs = thermo_.coalesce().indices()
+        try:
+            thermo_idxs = thermo_.coalesce().indices()
+        except NotImplementedError: # accounts for what's probably a PyTorch bug
+            thermo_idxs = torch.tensor([[], []], dtype=torch.long)
         con_idxs = con_.coalesce().indices()
 
         seq_idxs[1,:] += offset

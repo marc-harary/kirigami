@@ -35,8 +35,12 @@ def embed_bpseq(path, full_len=512):
 
 
 def embed_thermo(path, seq):
+    out = torch.zeros(len(seq), len(seq))
     with open(path, "r") as f:
-        lines = f.read().splitlines()
+        txt = f.read()
+        if txt == "":
+            return out
+        lines = txt.splitlines()
     idxs = []
     dists = []
     for line in lines:
@@ -46,17 +50,16 @@ def embed_thermo(path, seq):
     idxs_t = torch.tensor(idxs, dtype=int)
     dists_t = torch.tensor(dists)
     idxs_t -= 1
-    out = torch.zeros(len(seq), len(seq))
     out[idxs_t[:,0], idxs_t[:,1]] = dists_t
     out[idxs_t[:,1], idxs_t[:,0]] = dists_t
     return out.to_sparse()
 
 
 def main():
-    # bpseq_dir = "/home/mah258/project/spot/bpRNA/TR0-bpseq-cleaned"
-    # ct_dir = "/home/mah258/project/spot/bpRNA/TR0-cleaned-cts"
-    bpseq_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/TR1-bpseq"
-    ct_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/TR1-ct"
+    # bpseq_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/TR1-bpseq"
+    # ct_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/TR1-ct"
+    bpseq_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/VL1-bpseq"
+    ct_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/VL1-ct"
 
     bpseqs = glob(os.path.join(bpseq_dir, "*"))
     bpseqs.sort()

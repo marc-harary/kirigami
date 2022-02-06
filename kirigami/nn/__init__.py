@@ -7,3 +7,4 @@ from kirigami.nn.spot import *
 from kirigami.nn.fork import *
 from kirigami.nn.parallel import *
 from kirigami.nn.utils import *
+from kirigami.nn.symmetrize import *

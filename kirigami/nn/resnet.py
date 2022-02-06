@@ -72,6 +72,7 @@ class ResNet(torch.nn.Module):
                  dilations: Optional[List[int]] = None,
                  kernel_sizes: Tuple[int,int] = (3,5),
                  act: str = "ELU",
+                 include_sigmoid: bool = True,
                  norm: str = "BatchNorm2d",
                  resnet: bool = True,
                  **kwargs) -> None:
@@ -100,11 +101,11 @@ class ResNet(torch.nn.Module):
                                           out_channels=1,
                                           kernel_size=kernel_sizes[0],
                                           padding=1)
-        self.sigmoid = Sigmoid()
+        self.final_act = Sigmoid() if include_sigmoid else Identity()
         
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
         opt = self.conv_init(ipt)
         opt = self.blocks(opt)
         opt = self.conv_final(opt)
-        opt = self.sigmoid(opt)
+        opt = self.final_act(opt)
         return opt

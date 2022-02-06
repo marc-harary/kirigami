@@ -55,26 +55,82 @@ def embed_thermo(path, seq):
     return out.to_sparse()
 
 
+
+def embed_dist(file,
+               size: int,
+               K: int = 1.,
+               eps: float = 1e-8,
+               tau: float = 2,
+               ceiling: float = 23.):
+    with open(file, "r") as f:
+        lines = f.read().splitlines()
+    out = torch.zeros(10, size, size)
+    for line in lines[1:]:
+        words = line.split()
+        ii, jj = int(words[2])-1, int(words[5])-1
+        dists_ = list(map(float, words[6:]))
+        dists = torch.tensor(dists_) 
+        out[:,ii,jj] = out[:,jj,ii] = dists
+    print(out.min())
+    out = out.clip(out.min(), ceiling)
+    out /= ceiling
+    # out = out ** tau
+    # out = K / (out + eps)
+    return out#.to_sparse()
+
+
+# def embed_dist(file,
+#                size: int,
+#                val_max: float = 30):
+#     with open(file, "r") as f:
+#         lines = f.read().splitlines()
+#     out = torch.zeros(10, size, size)
+#     for line in lines[1:]:
+#         words = line.split()
+#         ii, jj = int(words[2])-1, int(words[5])-1
+#         dists_ = list(map(float, words[6:]))
+#         dists = torch.tensor(dists_) 
+#         out[:,ii,jj] = out[:,jj,ii] = dists
+#     out = out.clip(0, val_max)
+#     out /= val_max
+#     # out = A / (out + eps)
+#     return out#.to_sparse()
+        
+        
 def main():
-    # bpseq_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/TR1-bpseq"
-    # ct_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/TR1-ct"
-    bpseq_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/VL1-bpseq"
-    ct_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/VL1-ct"
-
-    bpseqs = glob(os.path.join(bpseq_dir, "*"))
-    bpseqs.sort()
-
-    cts = glob(os.path.join(ct_dir, "*"))
-    cts.sort()
+    bpseq_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/TR1-bpseq"
+    ct_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/TR1-ct"
+    dist_dir = "/home/mah258/project/spot/pdb/TR1-dists"
+    bpseqs = sorted(glob(os.path.join(bpseq_dir, "*")))
+    cts = sorted(glob(os.path.join(ct_dir, "*")))
+    dists = sorted(glob(os.path.join(dist_dir, "*")))
 
     data = []
-    files_zip = list(zip(bpseqs, cts))
-    for bpseq, ct in tqdm(files_zip):
+    files_zip = list(zip(bpseqs, cts, dists))
+    for bpseq, ct, dist in tqdm(files_zip):
         con, seq, seq_str = embed_bpseq(bpseq)
         thermo = embed_thermo(ct, seq_str)
-        data.append((seq, thermo, con))
+        dists = embed_dist(dist, len(seq_str))
+        data.append((seq, thermo, con, dists))
 
-    torch.save(data, "VL1.pt")
+    torch.save(data, "TR1_norm_clip23.pt")
+
+    bpseq_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/VL1-bpseq"
+    ct_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/VL1-ct"
+    dist_dir = "/home/mah258/project/spot/pdb/VL1-dists"
+    bpseqs = sorted(glob(os.path.join(bpseq_dir, "*")))
+    cts = sorted(glob(os.path.join(ct_dir, "*")))
+    dists = sorted(glob(os.path.join(dist_dir, "*")))
+
+    data = []
+    files_zip = list(zip(bpseqs, cts, dists))
+    for bpseq, ct, dist in tqdm(files_zip):
+        con, seq, seq_str = embed_bpseq(bpseq)
+        thermo = embed_thermo(ct, seq_str)
+        dists = embed_dist(dist, len(seq_str))
+        data.append((seq, thermo, con, dists))
+
+    torch.save(data, "VL1_norm_clip_23.pt")
     
 
 if __name__ == "__main__":

@@ -1,27 +1,36 @@
 import torch
 from torch import nn
 from kirigami.nn.utils import *
+import torch.nn.functional as F
 
 
 __all__ = ["Fork"]
 
 
 class Fork(AtomicModule):
-
-    contact_module: nn.Module
-    inv_module: nn.Module
-    one_hot_module: nn.Module
-
     def __init__(self,
-                 contact_module: nn.Module,
-                 inv_module: nn.Module,
-                 one_hot_module: nn.Module) -> None:
+                 in_channels: int,
+                 kernel_size: int,
+                 out_dist_channels: int = 10):
         super().__init__()
-        self.contact_module = contact_module
-        self.inv_module = inv_module
-        self.one_hot_module = one_hot_module
-
-    def forward(self, ipt: torch.Tensor) -> Triple[torch.Tensor]:
-        return (self.contact_module(ipt),
-                self.inv_module(ipt),
-                self.one_hot_module(ipt))
+        self.label_conv = torch.nn.Conv2d(in_channels=in_channels,
+                                          out_channels=1,
+                                          kernel_size=kernel_size,
+                                          padding=1)
+        self.dist_conv = torch.nn.Conv2d(in_channels=in_channels,
+                                         out_channels=out_dist_channels,
+                                         kernel_size=kernel_size,
+                                         padding=1)
+        self.sigmoid = nn.Sigmoid()
+        # self.act_norm_drop = ActNormDrop(act="ELU",
+        #                                  norm="",
+        #                                  p=
+        
+    
+    def forward(self, ipt: torch.Tensor):
+        lab = self.label_conv(ipt)
+        lab = self.sigmoid(lab)
+        dist = self.dist_conv(ipt)
+        dist = self.sigmoid(dist)
+        # dist = F.relu(dist)
+        return lab, dist

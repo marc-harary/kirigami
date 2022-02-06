@@ -6,10 +6,17 @@
 echo '#!/usr/bin/bash' > /tmp/temp.slurm
 echo 'python run.py' >> /tmp/temp.slurm
 chmod +x /tmp/temp.slurm
+
+if [[ $1 ]]; then
+    name="$1"
+else
+    name="$(date +%F-%T)"
+fi
+
 sbatch -p scavenge_gpu \
        --time=2-00:00:00 \
        --mem-per-cpu=64G \
        --gpus=2 \
        --out="%x.log" \
-       -J "$(date +%F-%T)" \
+       -J $name \
       /tmp/temp.slurm 

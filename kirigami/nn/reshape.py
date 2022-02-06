@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 
 
-__all__ = ["Concatenate", "Squeeze", "Symmetrize", "Triu", "DropH0C0", "Unsqueeze"]
+__all__ = ["Concatenate", "Squeeze", "Triu", "DropH0C0", "Unsqueeze"]
 
 
 class Concatenate(nn.Module):
@@ -47,14 +47,14 @@ class Unsqueeze(nn.Module):
         return ipt.unsqueeze(self.squeeze_dim)
 
 
-class Symmetrize(nn.Module):
-    """symmetrizes square matrix"""
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, ipt: torch.Tensor) -> torch.Tensor:
-        return (ipt + ipt.permute(0, 1, 3, 2)) / 2
+# class Symmetrize(nn.Module):
+#     """symmetrizes square matrix"""
+# 
+#     def __init__(self):
+#         super().__init__()
+# 
+#     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
+#         return (ipt + ipt.permute(0, 1, 3, 2)) / 2
 
 
 class Triu(nn.Module):

@@ -5,9 +5,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from kirigami.nn.utils import *
+from torch.nn.functional import tanh
 
 
-__all__ = ["InverseLoss", "LossEmbedding", "ForkLoss", "WeightLoss", "ForkLogCosh"]
+__all__ = ["InverseLoss", "LossEmbedding", "WeightLoss", "ForkL1"]
 
 
 class InverseLoss(nn.Module):
@@ -139,31 +140,41 @@ class ForkL1(nn.Module):
     def __init__(self,
                  pos_weight: float,
                  dist_weight: float,
-                 dropout: bool = True):
+                 dropout: bool = True,
+                 inv: bool = False,
+                 f = None):
         super().__init__()
         assert 0.0 <= dist_weight <= 1.0
         self._dropout = dropout
         self._dist_weight = dist_weight
         self._weight_crit = WeightLoss(pos_weight)
         self._dist_crit = nn.L1Loss(reduction="none")
+        self._inv = inv
+        self._f = f if f else lambda x: x
 
 
     def forward(self, prd: tuple, grd: tuple):
         prd_con, prd_dist = prd
         grd_con, grd_dist = grd
 
+        if self._inv:
+            grd_dist_ = 1 / (grd_dist + 1e-16)
+            grd_dist_[grd_dist == 0] = 0 
+            prd_dist_ = 1 / (prd_dist + 1e-16)
+            dist_loss = self._dist_crit(prd_dist_, grd_dist_)
+        else:
+            dist_loss = self._dist_crit(prd_dist, grd_dist)
         con_loss = self._weight_crit(prd_con, grd_con) 
-        dist_loss = self._dist_crit(prd_dist, grd_dist)
 
         length = prd_dist.shape[-1]
         diags = torch.arange(length)
         dist_loss[:, :, diags, diags] = 0.
         dist_loss[grd_dist <= 0] = 0.
         if self._dropout:
-            probs = torch.rand(grd_dist.shape)
-            mask = probs < grd_dists
+            probs = torch.rand(grd_dist.shape, device=grd_dist.device)
+            mask = probs < self._f(grd_dist)
             dist_loss[mask] = 0.
-            # dist_loss[grd_dist == 1] = 0.
+        dist_loss[grd_dist == 1] = 0.
         dist_loss = torch.sum(dist_loss)
 
         tot_loss = self._dist_weight*dist_loss + (1.-self._dist_weight)*con_loss

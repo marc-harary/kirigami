@@ -211,17 +211,16 @@ def prd2set(ipt: torch.Tensor,
 
 def get_dists(prd: torch.Tensor,
               grd: torch.Tensor,
-              inv: bool = False,
-              eps: float = 1e-8,
-              tau: float = 1,
-              K: float = 100.,
+              bins: torch.Tensor, 
               ceiling: float = None):
+              # inv: bool = False,
+              # eps: float = 1e-8,
+              # tau: float = 1,
+              # K: float = 100.,
+              # ceiling: float = None):
     prd_ = prd[1]
     grd_ = grd[1]
     L = prd_.shape[-1]
-
-    # prd_dists = max_value * prd_
-    # grd_dists = max_value * grd_
 
     prd_vec_ = []
     grd_vec_ = []
@@ -234,14 +233,6 @@ def get_dists(prd: torch.Tensor,
     grd_vec = torch.hstack(grd_vec_).squeeze()
     prd_vec = torch.hstack(prd_vec_).squeeze()
 
-    # if inv:
-    #     grd_vec = K/grd_vec - eps
-    #     prd_vec = K/prd_vec - eps
-    #     # prd_vec = prd_vec ** 1/tau
-    #     # grd_vec = grd_vec ** 1/tau
-
-    # grd_vec *= 20
-    # prd_vec *= 20
     prd_vec *= ceiling
     grd_vec *= ceiling
 
@@ -249,14 +240,27 @@ def get_dists(prd: torch.Tensor,
     prd_vec_sort = prd_vec[grd_vec.sort().indices]
     error = torch.abs(prd_vec_sort - grd_vec_sort)
     
-    pccs = []
-    errors = []
+    l_pccs = []
+    l_errors = []
     for num in [L, 2*L, 5*L, 10*L]:
         grd_vec_trunc = grd_vec_sort[:num]
         prd_vec_trunc = prd_vec_sort[:num]
-        pccs.append(get_pcc(grd_vec_trunc, prd_vec_trunc))
-        errors.append(error[:num].mean())
-    pccs.append(get_pcc(grd_vec, prd_vec))
-    errors.append(error.mean())
+        l_pccs.append(get_pcc(grd_vec_trunc, prd_vec_trunc))
+        l_errors.append(error[:num].mean())
+    l_pccs.append(get_pcc(grd_vec, prd_vec))
+    l_errors.append(error.mean())
 
-    return torch.Tensor(errors + pccs)
+    d_errors = [] 
+    for i in range(len(bins) - 1):
+        lower = bins[i]
+        upper = bins[i+1]
+        mask = torch.logical_and(grd_vec_sort > lower,
+                                 grd_vec_sort < upper)
+        d_error = 0
+        if any(mask):
+            grd_vec_trunc = grd_vec_sort[mask]
+            error_trunc = error[mask]
+            d_error = error_trunc.mean()
+        d_errors.append(d_error)
+        
+    return torch.Tensor(l_pccs), torch.Tensor(l_errors), torch.Tensor(d_errors)

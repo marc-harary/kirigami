@@ -20,7 +20,7 @@ from torch.nn.functional import binary_cross_entropy
 
 import kirigami.nn
 from kirigami.nn.utils import *
-from kirigami.nn import WeightLoss, ForkLoss, ForkLogCosh
+from kirigami.nn import WeightLoss, ForkL1 #ForkLoss, ForkLogCosh
 from kirigami.utils import *
 from kirigami.utils.sampler import *
 
@@ -155,10 +155,12 @@ def train(notes=None, **kwargs) -> None:
 
         raw_loss_tot = bin_loss_tot = mcc_tot = 0
         f1_tot = prd_pairs_tot = grd_pairs_tot = 0
-        dist_errors_pccs_tot = 0
+        ls, pccs, mae_ls, mae_dists = [], [], [], []
         con_loss_tot = 0
         dist_loss_tot = 0
         count = 0
+
+        prd_grds = []
         with torch.no_grad():
             for i, (ipt, grd) in enumerate(tqdm(g.VL_LOADER, disable=not p.bar)):
                 prd = g.MODEL(ipt)
@@ -172,7 +174,7 @@ def train(notes=None, **kwargs) -> None:
                                   min_dist=4,
                                   min_prob=.5)
                 bin_scores = get_scores(prd_set, grd_set, len(seq))
-                dist_errors_pccs = get_dists(prd, grd, epoch, **p.dist_kwargs)
+                pcc, mae_l, mae_dist = get_dists(prd, grd, **p.dist_kwargs)
     
                 raw_loss_tot += tot_loss.item()
                 dist_loss_tot += dist_loss
@@ -181,11 +183,20 @@ def train(notes=None, **kwargs) -> None:
                 f1_tot += bin_scores["f1"]
                 prd_pairs_tot += bin_scores["n_prd"]
                 grd_pairs_tot += bin_scores["n_grd"]
-                dist_errors_pccs_tot += dist_errors_pccs
+                # dist_errors_pccs_tot += dist_errors_pccs
+                ls.append(len(seq))
+                pccs.append(pcc)
+                mae_ls.append(mae_l)
+                mae_dists.append(mae_dist)
 
-                # if epoch == 1000:
-                #     torch.save(grd, f"grd{i}.pt")
-                #     torch.save(prd, f"prd{i}.pt")
+                prd_grds.append((grd, prd))
+
+        if epoch == p.save_epoch:
+            if not p.out_file:
+                out_time = int(time.time()) % 100_000
+                p.out_file = f"{out_time}_vals.pt"
+            torch.save(prd_grds, p.out_file)
+            logging.info(f"\nSaving data as {p.out_file}\n")
 
         mcc_mean = mcc_tot / g.VL_LEN
         raw_loss_mean = raw_loss_tot / g.VL_LEN
@@ -194,26 +205,23 @@ def train(notes=None, **kwargs) -> None:
         f1_mean = f1_tot / g.VL_LEN
         prd_pairs_mean = prd_pairs_tot / g.VL_LEN
         grd_pairs_mean = grd_pairs_tot / g.VL_LEN
-        dist_errors_pccs_mean = (dist_errors_pccs_tot / g.VL_LEN).tolist()
+
+        pcc_mean = torch.stack(pccs).mean(0).tolist()
+        mae_l_mean = torch.stack(mae_ls).mean(0).tolist()
+        mae_dist_mean = torch.stack(mae_dists).mean(0).tolist()
+        # dist_errors_pccs_mean = (dist_errors_pccs_tot / g.VL_LEN).tolist()
 
         delta = datetime.datetime.now() - start
         mess = (f"Validation time: {delta.seconds}s\n" +
-                f"Mean total validation loss: {raw_loss_mean}\n" +
-                f"Mean contact validation loss: {con_loss_mean}\n" +
-                f"Mean distance validation loss: {dist_loss_mean}\n" +
-                f"Mean MCC: {mcc_mean}\n" +
-                f"Average total distance error: {dist_errors_pccs_mean[4]}\n" +
-                f"Average L1 distance error (first L): {dist_errors_pccs_mean[0]}\n" +
-                f"Average L1 distance error (first 2L): {dist_errors_pccs_mean[1]}\n" +
-                f"Average L1 distance error (first 5L): {dist_errors_pccs_mean[2]}\n" +
-                f"Average L1 distance error (first 10L): {dist_errors_pccs_mean[3]}\n" +
-                f"Average total distance PCC: {dist_errors_pccs_mean[9]}\n" +
-                f"Average distance PCC (first L): {dist_errors_pccs_mean[5]}\n" +
-                f"Average distance PCC (first 2L): {dist_errors_pccs_mean[6]}\n" +
-                f"Average distance PCC (first 5L): {dist_errors_pccs_mean[7]}\n" +
-                f"Average distance PCC (first 10L): {dist_errors_pccs_mean[8]}\n" +
-                f"Mean ground pairs: {grd_pairs_mean}\n" +
-                f"Mean predicted pairs: {prd_pairs_mean}\n")
+                f"Total validation loss: {raw_loss_mean}\n" +
+                f"Contact validation loss: {con_loss_mean}\n" +
+                f"Distance validation loss: {dist_loss_mean}\n" +
+                f"MCC: {mcc_mean}\n" +
+                f"L1 error by L: {mae_l_mean}\n" +
+                f"PCC: {pcc_mean}\n" +
+                f"L1 error by dist: {mae_dist_mean}\n" +
+                f"Ground pairs: {grd_pairs_mean}\n" +
+                f"Predicted pairs: {prd_pairs_mean}\n")
         if mcc_mean > g.BEST_MCC:
             g.BEST_MCC = mcc_mean
             g.BEST_LOSS = raw_loss_mean

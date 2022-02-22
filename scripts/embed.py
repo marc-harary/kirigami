@@ -61,7 +61,7 @@ def embed_dist(file,
                K: int = 1.,
                eps: float = 1e-8,
                tau: float = 2,
-               ceiling: float = 23.):
+               ceiling: float = 50.):
     with open(file, "r") as f:
         lines = f.read().splitlines()
     out = torch.zeros(10, size, size)
@@ -71,7 +71,6 @@ def embed_dist(file,
         dists_ = list(map(float, words[6:]))
         dists = torch.tensor(dists_) 
         out[:,ii,jj] = out[:,jj,ii] = dists
-    print(out.min())
     out = out.clip(out.min(), ceiling)
     out /= ceiling
     # out = out ** tau
@@ -113,7 +112,7 @@ def main():
         dists = embed_dist(dist, len(seq_str))
         data.append((seq, thermo, con, dists))
 
-    torch.save(data, "TR1_norm_clip23.pt")
+    torch.save(data, "TR1_norm_clip50.pt")
 
     bpseq_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/VL1-bpseq"
     ct_dir = "/gpfs/ysm/project/pyle/mah258/spot/pdb/VL1-ct"
@@ -130,7 +129,7 @@ def main():
         dists = embed_dist(dist, len(seq_str))
         data.append((seq, thermo, con, dists))
 
-    torch.save(data, "VL1_norm_clip_23.pt")
+    torch.save(data, "VL1_norm_clip_50.pt")
     
 
 if __name__ == "__main__":

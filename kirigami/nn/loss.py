@@ -8,7 +8,7 @@ from kirigami.nn.utils import *
 from torch.nn.functional import tanh
 
 
-__all__ = ["InverseLoss", "LossEmbedding", "WeightLoss", "ForkL1"]
+__all__ = ["InverseLoss", "LossEmbedding", "WeightLoss", "ForkL1", "ForkLoss", "CEMulti"]
 
 
 class InverseLoss(nn.Module):
@@ -180,3 +180,63 @@ class ForkL1(nn.Module):
         tot_loss = self._dist_weight*dist_loss + (1.-self._dist_weight)*con_loss
 
         return tot_loss, dist_loss.item(), con_loss.item()
+
+
+class CEMulti(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, lhs, rhs):
+        batch_size, n_bins, L, _  = lhs.shape
+        lhs_flat = lhs.reshape(batch_size, n_bins, -1)
+        rhs_flat = rhs.reshape(batch_size, n_bins, -1)
+        loss = F.cross_entropy(lhs_flat, rhs_flat, reduction="none")
+        loss = loss.reshape(batch_size, L, L)
+        return loss
+
+
+class ForkLoss(nn.Module):
+    def __init__(self,
+                 dist_crit: nn.Module,
+                 pos_weight: float,
+                 dist_weight: float,
+                 dropout: bool = True,
+                 f = None):
+        super().__init__()
+        assert 0.0 <= dist_weight <= 1.0
+        self._dist_crit = dist_crit
+        self._dropout = dropout
+        self._dist_weight = dist_weight
+        self._weight_crit = WeightLoss(pos_weight)
+        self._f = f if f else lambda x: x
+
+
+    def forward(self, prd: tuple, grd: tuple):
+        prd_con, *prd_dists = prd
+        grd_con, *grd_dists = grd
+
+        con_loss = self._weight_crit(prd_con, grd_con) 
+        # dist_loss = self._dist_crit(prd_dist, grd_dist)
+        dist_loss_all = 0
+
+
+        for grd_dist, prd_dist in zip(grd_dists, prd_dists):
+            dist_loss = self._dist_crit(prd_dist, grd_dist)
+            length = prd_dist.shape[-1]
+            diags = torch.arange(length)
+            dist_loss[:, diags, diags] = 0.
+            dist_loss[grd_dist[:,0,:,:] == 1.] = 0.
+            import pdb; pdb.set_trace()
+            # dist_loss[grd_dist <= 0] = 0.
+            if self._dropout:
+                probs = torch.rand(grd_dist.shape, device=grd_dist.device)
+                mask = probs < self._f(grd_dist)
+                dist_loss[mask] = 0.
+            # dist_loss[grd_dist == 1] = 0.
+            dist_loss = torch.sum(dist_loss)
+            dist_loss_all += dist_loss
+
+        tot_loss = (self._dist_weight * dist_loss_all +
+                    (1.-self._dist_weight) * con_loss)
+
+        return tot_loss, dist_loss_all.item(), con_loss.item()

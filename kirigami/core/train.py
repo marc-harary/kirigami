@@ -47,9 +47,9 @@ def train(notes=None, **kwargs) -> None:
     # if DEVICE == torch.device("cuda") and N > 1:
     #     model = nn.DataParallel(model, output_device=[1])
     # load data and copy into `DataLoader`'s
-    tr_set = torch.load(p.tr_set)
-    vl_set = torch.load(p.vl_set)
-    if p.batch_sample:
+    tr_set = torch.load(p.data.tr_set)
+    vl_set = torch.load(p.data.vl_set)
+    if p.data.batch_sample:
         g.SAMPLER = EqualSampler(tr_set)
         g.BATCH_SIZE = 1
     else:
@@ -59,22 +59,32 @@ def train(notes=None, **kwargs) -> None:
     g.DEVICE = DEVICE
     g.BEST_MCC = -float("inf")
     g.BEST_LOSS = float("inf") 
-    g.CRIT = eval(p.criterion)
+    g.CRIT = p.criterion
     g.OPT = eval(p.optimizer)(g.MODEL.parameters(), lr=p.lr)
     g.SCALER = GradScaler() if g.DEVICE == torch.device("cuda") else None
     g.TR_LOADER = DataLoader(tr_set,
                              batch_size=g.BATCH_SIZE,
                              batch_sampler=g.SAMPLER,
                              collate_fn=partial(collate_fn,
-                                                use_dist=p.use_dist,
-                                                n_dists=p.n_dists,
-                                                use_thermo=p.use_thermo,
+                                                use_thermo=p.data.use_thermo,
+                                                use_dist=p.data.use_dist,
+                                                ceiling=p.data.ceiling,
+                                                dist_idxs=p.data.dist_idxs,
+                                                inv=p.data.inv,
+                                                inv_eps=p.data.inv_eps,
+                                                multiclass=p.data.multiclass,
+                                                bins=p.data.bins.to(g.DEVICE),
                                                 device=g.DEVICE))
     g.TR_LEN = len(tr_set)
     g.VL_LOADER = DataLoader(vl_set, collate_fn=partial(collate_fn,
-                                                        use_dist=p.use_dist,
-                                                        n_dists=p.n_dists,
-                                                        use_thermo=p.use_thermo,
+                                                        use_thermo=p.data.use_thermo,
+                                                        use_dist=p.data.use_dist,
+                                                        ceiling=p.data.ceiling,
+                                                        dist_idxs=p.data.dist_idxs,
+                                                        inv=p.data.inv,
+                                                        inv_eps=p.data.inv_eps,
+                                                        multiclass=p.data.multiclass,
+                                                        bins=p.data.bins.to(g.DEVICE),
                                                         device=g.DEVICE))
     g.VL_LEN = len(vl_set)
     g.START_EPOCH = 0
@@ -174,21 +184,44 @@ def train(notes=None, **kwargs) -> None:
                                   min_dist=4,
                                   min_prob=.5)
                 bin_scores = get_scores(prd_set, grd_set, len(seq))
-                pcc, mae_l, mae_dist = get_dists(prd, grd, **p.dist_kwargs)
+                
+                
+                if p.data.use_dist:
+                    pcc_mol = 0 
+                    mae_l_mol = 0
+                    mae_dist_mol = 0
+                    n_dists = len(prd) - 1
+                    for prd_tens, grd_tens in zip(prd[1:], grd[1:]):
+                        prd_unembed = unembed(prd_tens,
+                                               ceiling=p.data.ceiling,
+                                               inv=p.data.inv,
+                                               bins=p.data.bins,
+                                               multiclass=p.data.multiclass,
+                                               inv_eps=p.data.inv_eps)
+                        grd_unembed = unembed(grd_tens,
+                                               ceiling=p.data.ceiling,
+                                               inv=p.data.inv,
+                                               bins=p.data.bins,
+                                               multiclass=p.data.multiclass,
+                                               inv_eps=p.data.inv_eps)
+                        pcc, mae_l, mae_dist = get_dists(prd_unembed, grd_unembed)
+                        pcc_mol += pcc / n_dists
+                        mae_l_mol += mae_l / n_dists
+                        mae_dist_mol += mae_dist / n_dists
+                    # import pdb; pdb.set_trace()
+                    pccs.append(pcc_mol)
+                    mae_ls.append(mae_l_mol)
+                    mae_dists.append(mae_dist_mol)
     
                 raw_loss_tot += tot_loss.item()
-                dist_loss_tot += dist_loss
                 con_loss_tot += con_loss
+                dist_loss_tot += dist_loss
                 mcc_tot += bin_scores["mcc"]
                 f1_tot += bin_scores["f1"]
                 prd_pairs_tot += bin_scores["n_prd"]
                 grd_pairs_tot += bin_scores["n_grd"]
                 # dist_errors_pccs_tot += dist_errors_pccs
                 ls.append(len(seq))
-                pccs.append(pcc)
-                mae_ls.append(mae_l)
-                mae_dists.append(mae_dist)
-
                 prd_grds.append((grd, prd))
 
         if epoch == p.save_epoch:
@@ -206,8 +239,10 @@ def train(notes=None, **kwargs) -> None:
         prd_pairs_mean = prd_pairs_tot / g.VL_LEN
         grd_pairs_mean = grd_pairs_tot / g.VL_LEN
 
-        pcc_mean = torch.stack(pccs).mean(0).tolist()
-        mae_l_mean = torch.stack(mae_ls).mean(0).tolist()
+        pccs = torch.stack(pccs)
+        pcc_mean = torch.tensor(pccs).mean(0)
+        # mae_l_mean = torch.stack(mae_ls).mean(0).tolist()
+        mae_l_mean = torch.stack(mae_ls).mean()
         mae_dist_mean = torch.stack(mae_dists).mean(0).tolist()
         # dist_errors_pccs_mean = (dist_errors_pccs_tot / g.VL_LEN).tolist()
 

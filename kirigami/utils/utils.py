@@ -128,8 +128,6 @@ def collate_fn(batch_list: Sequence[Tuple],
     if use_dist:
         opts = (opts, *dists)
 
-    import pdb; pdb.set_trace()
-
     return ipts, opts
 
 

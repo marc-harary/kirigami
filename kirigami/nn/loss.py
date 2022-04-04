@@ -58,13 +58,14 @@ class WeightLoss(nn.Module):
         assert 0.0 <= weight <= 1.0
         self._weight = weight
         self._loss = nn.BCELoss(reduction="none")
+        # self.weight = nn.Parameter(torch.rand(1).cuda())
 
     def forward(self,
                 prd: torch.Tensor,
                 grd: torch.Tensor) -> torch.Tensor:
         loss = self._loss(prd, grd)
-        loss[grd == 1] *= self._weight
-        loss[grd == 0] *= (1 - self._weight)
+        loss[grd == 0] *= self._weight
+        loss[grd == 1] *= 1 - self._weight
         return loss.sum()
 
 
@@ -185,22 +186,24 @@ class ForkL1(nn.Module):
 class CEMulti(nn.Module):
     def __init__(self):
         super().__init__()
+        # self.weights = torch.tanh(torch.linspace(1,0.1,38)).cuda()
+        # self.cross_entropy_loss = nn.CrossEntropyLoss(weight=self.weights, reduction="none")
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction="none")
 
-    def forward(self, lhs, rhs):
-        batch_size, n_bins, L, _  = lhs.shape
-        lhs_flat = lhs.reshape(batch_size, n_bins, -1)
-        rhs_flat = rhs.reshape(batch_size, n_bins, -1)
-        loss = F.cross_entropy(lhs_flat, rhs_flat, reduction="none")
-        loss = loss.reshape(batch_size, L, L)
-        return loss
+    def forward(self, target, rhs):
+        mask = target[:, 0, :, :].isnan()
+        target_idxs = target.argmax(1)
+        loss = self.cross_entropy_loss(rhs, target_idxs)
+        loss[mask] = 0.
+        return loss.sum()
 
 
 class ForkLoss(nn.Module):
     def __init__(self,
                  dist_crit: nn.Module,
-                 pos_weight: float,
-                 dist_weight: float,
-                 dropout: bool = True,
+                 pos_weight: float = None,
+                 dist_weight: float = None,
+                 dropout: bool = False,
                  f = None):
         super().__init__()
         assert 0.0 <= dist_weight <= 1.0
@@ -209,34 +212,30 @@ class ForkLoss(nn.Module):
         self._dist_weight = dist_weight
         self._weight_crit = WeightLoss(pos_weight)
         self._f = f if f else lambda x: x
+        # self.weight = nn.Parameter(torch.randn(1).cuda())
+        # self.weight = nn.Parameter(torch.zeros(11, device=torch.device("cuda")))
 
 
-    def forward(self, prd: tuple, grd: tuple):
+    def forward(self, prd: tuple, grd: tuple, dist_weight: Optional[float] = None):
+        dist_weight = dist_weight or self._dist_weight
         prd_con, *prd_dists = prd
         grd_con, *grd_dists = grd
 
-        con_loss = self._weight_crit(prd_con, grd_con) 
-        # dist_loss = self._dist_crit(prd_dist, grd_dist)
+        con_loss = self._weight_crit(prd_con,grd_con)
+        # tot_loss = torch.exp(-self.weight[0]) * con_loss + self.weight[0]
+        # tot_loss = (1-dist_weight) * con_loss
+        tot_loss = (1-dist_weight) * con_loss
         dist_loss_all = 0
 
+        for i, (grd_dist, prd_dist) in enumerate(zip(grd_dists, prd_dists)):
+            dist_loss = dist_weight * self._dist_crit(grd_dist, prd_dist)
+            dist_loss_all += dist_loss.item()
+            tot_loss += dist_loss
 
-        for grd_dist, prd_dist in zip(grd_dists, prd_dists):
-            dist_loss = self._dist_crit(prd_dist, grd_dist)
-            length = prd_dist.shape[-1]
-            diags = torch.arange(length)
-            dist_loss[:, diags, diags] = 0.
-            dist_loss[grd_dist[:,0,:,:] == 1.] = 0.
-            import pdb; pdb.set_trace()
-            # dist_loss[grd_dist <= 0] = 0.
-            if self._dropout:
-                probs = torch.rand(grd_dist.shape, device=grd_dist.device)
-                mask = probs < self._f(grd_dist)
-                dist_loss[mask] = 0.
-            # dist_loss[grd_dist == 1] = 0.
-            dist_loss = torch.sum(dist_loss)
-            dist_loss_all += dist_loss
+        # tot_loss = torch.exp(-self.weight[0])*con_loss + torch.exp(-self.weight[1])*dist_loss_all
+        # weight = torch.exp(-self.weight)
+        # tot_loss = weight[0]*con_loss + weight[0] + weight[1]*dist_loss_all + weight[1]
 
-        tot_loss = (self._dist_weight * dist_loss_all +
-                    (1.-self._dist_weight) * con_loss)
-
-        return tot_loss, dist_loss_all.item(), con_loss.item()
+        # return tot_loss, dist_loss_all.item(), con_loss.item() # dist_loss_all, dist_loss_all.item(), con_loss.item()
+        # return tot_loss, dist_loss.item(), con_loss.item()
+        return tot_loss, dist_loss.item(), con_loss.item()

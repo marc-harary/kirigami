@@ -1,4 +1,5 @@
 from typing import *
+import numpy as np
 import torch
 
 
@@ -20,7 +21,7 @@ def concat(fasta):
 def get_pcc(prd, grd):
     prd_demean = prd - prd.mean()
     grd_demean = grd - grd.mean()
-    cov = torch.mean(prd_demean * grd_demean)
+    cov = np.mean(prd_demean * grd_demean)
     if prd.std() == 0 or grd.std() == 0:
         return 0
     return cov / (prd.std()*grd.std())
@@ -58,6 +59,7 @@ def collate_fn(batch_list: Sequence[Tuple],
                dist_idxs: Optional[List[int]] = None,
                ceiling: float = torch.inf,
                inv: bool = False,
+               return_raw: bool = False,
                inv_eps: float = 1e-8):
     """Collates list of tensors in batch"""
     assert not inv or not multiclass
@@ -68,6 +70,7 @@ def collate_fn(batch_list: Sequence[Tuple],
     # dists_ = [[] for dist_idx in dist_idxs]
     # TODO: clean up this line
     dists_ = []
+    raw_dists = []
 
     dist_idxs = dist_idxs if dist_idxs else torch.arange(10)
 
@@ -101,7 +104,7 @@ def collate_fn(batch_list: Sequence[Tuple],
 
         dist_ = tup[3]
         dist = dist_.to(device)
-        dist = dist.clip(-torch.inf, ceiling)
+        # dist = dist.clip(-torch.inf, ceiling)
         if inv:
             dist_out = 1 / (dist + inv_eps)
             dist_out[dist <= 0] = torch.nan
@@ -112,12 +115,14 @@ def collate_fn(batch_list: Sequence[Tuple],
             dist_out = dist
             dist_out[dist <= 0] = torch.nan
         dists_.append(dist_out)
+        raw_dists.append(dist)
             
     seqs = torch.stack(seqs_)
     thermos = torch.stack(thermos_)
     cons = torch.stack(cons_)
     dists_stack = torch.stack(dists_)
-    dists_stack = dists_stack[:,:,dist_idxs,:,:]
+    # dists_stack = dists_stack[:,:,dist_idxs,:,:]
+    dists_stack = dists_stack[...,dist_idxs,:,:]
     dists = torch.tensor_split(dists_stack, len(dist_idxs), dim=-3)
     dists = [dist.squeeze(-3) for dist in dists]
 
@@ -127,6 +132,8 @@ def collate_fn(batch_list: Sequence[Tuple],
     opts = cons
     if use_dist:
         opts = (opts, *dists)
+        if return_raw:
+            opts = (opts, raw_dists[0])
 
     return ipts, opts
 
@@ -253,33 +260,43 @@ def prd2set(ipt: torch.Tensor,
 #                          error[:,:5*L].mean(),
 #                          error[:,:10*L].mean()])
 
+def unembed(ipt, bins, **kwargs):
+    ipt = ipt.softmax(-3)
+    bins_offset = np.hstack((np.zeros(1), bins[:-1].numpy()))
+    centers = (bins.numpy()+bins_offset) / 2
+    centers[-1] = 20.
+    centers = centers.reshape(1, -1, 1, 1)
+    out = ipt.detach().cpu().numpy() * centers
+    out = out.sum(1)
+    out = out.squeeze()
+    return out
 
-def unembed(ipt: torch.Tensor,
-             bins: torch.Tensor,
-             ceiling: float = None,
-             inv: bool = False,
-             inv_eps: float = 1e-8,
-             multiclass: bool = False):
-    assert not multiclass or not inv
-    if isinstance(ipt, tuple):
-        return tuple([unembed(tens, bins, ceiling, inv, inv_eps, multiclass) for tens in ipt])
-    elif inv:
-        return 1/ipt - inv_eps
-    elif multiclass:
-        out = torch.zeros(ipt.shape[-1], ipt.shape[-1])
-        # bin_list = [0] + bins.tolist()
-        bin_centers = torch.zeros(len(bins)+1)
-        for i in range(len(bins)-1):
-            bin_centers[i] = 0.5 * (bins[i] + bins[i+1])
-        bin_centers[-1] = bins[-1]
-        ipt_idxs = ipt.argmax(1)
-        out = bin_centers[ipt_idxs]
-        return out
+# def unembed(ipt: torch.Tensor,
+#              bins: torch.Tensor,
+#              ceiling: float = None,
+#              inv: bool = False,
+#              inv_eps: float = 1e-8,
+#              multiclass: bool = False):
+#     assert not multiclass or not inv
+#     if isinstance(ipt, tuple):
+#         return tuple([unembed(tens, bins, ceiling, inv, inv_eps, multiclass) for tens in ipt])
+#     elif inv:
+#         return 1/ipt - inv_eps
+#     elif multiclass:
+#         bins_offset = torch.hstack((torch.zeros(1), bins[:-1]))
+#         centers = (bins+bins_offset) / 2
+#         centers[-1] = bins[-1]
+#         centers = centers.reshape(1, -1, 1, 1)
+#         centers = centers.to(ipt.device)
+#         out = ipt * centers
+#         out = out.sum(1)
+#         out = out.squeeze()
+#         return out
 
-
+"""
 def get_dists(prd: torch.Tensor,
-              grd: torch.Tensor):
-              # bins: torch.Tensor, 
+              grd: torch.Tensor,
+              bins: torch.Tensor = None): 
               # ceiling: float = None,
               # inv: bool = False,
               # eps: float = 1e-8):
@@ -294,18 +311,18 @@ def get_dists(prd: torch.Tensor,
     grd_vec_ = []
     for i in range(L):
         for j in range(i+4, L):
-            idxs = grd_[i,j] > 0
-            prd_vec_.append(prd_[i,j][idxs])
-            grd_vec_.append(grd_[i,j][idxs])
+            import pdb; pdb.set_trace()
+            if not grd_[i,j].isnan():
+                prd_vec_.append(prd_[i,j])
+                grd_vec_.append(grd_[i,j])
 
     grd_vec = torch.hstack(grd_vec_).squeeze()
     prd_vec = torch.hstack(prd_vec_).squeeze()
 
-    # prd_vec *= ceiling
-    # grd_vec *= ceiling
-
-    grd_vec_sort = grd_vec.sort().values
-    prd_vec_sort = prd_vec[grd_vec.sort().indices]
+    # grd_vec_sort = grd_vec.sort().values
+    # prd_vec_sort = prd_vec[grd_vec.sort().indices]
+    prd_vec_sort = prd_vec.sort().values
+    grd_vec_sort = grd_vec[prd_vec.sort().indices]
     error = torch.abs(prd_vec_sort - grd_vec_sort)
     
     l_pccs = []
@@ -318,18 +335,55 @@ def get_dists(prd: torch.Tensor,
     l_pccs.append(get_pcc(grd_vec, prd_vec))
     l_errors.append(error.mean())
 
+    if bins is None:
+        return torch.Tensor(l_pccs), torch.Tensor(l_errors), torch.Tensor([])
+
     d_errors = [] 
-    # d_errors = [] 
-    # for i in range(len(bins) - 1):
-    #     lower = bins[i]
-    #     upper = bins[i+1]
-    #     mask = torch.logical_and(grd_vec_sort > lower,
-    #                              grd_vec_sort < upper)
-    #     d_error = 0
-    #     if any(mask):
-    #         grd_vec_trunc = grd_vec_sort[mask]
-    #         error_trunc = error[mask]
-    #         d_error = error_trunc.mean()
-    #     d_errors.append(d_error)
+    for i in range(len(bins) - 1):
+        lower = bins[i]
+        upper = bins[i+1]
+        mask = torch.logical_and(grd_vec_sort > lower,
+                                 grd_vec_sort < upper)
+        d_error = 0
+        if any(mask):
+            grd_vec_trunc = grd_vec_sort[mask]
+            error_trunc = error[mask]
+            d_error = error_trunc.mean()
+        d_errors.append(d_error)
         
     return torch.Tensor(l_pccs), torch.Tensor(l_errors), torch.Tensor(d_errors)
+"""
+
+
+def get_dists(prd, grd, **kwargs):
+    L = prd.shape[-1]
+
+    prd_vec_ = []
+    grd_vec_ = []
+    for i in range(L):
+        for j in range(i+4, L):
+            if not np.isnan(grd[i,j]):
+                prd_vec_.append(prd[i,j])
+                grd_vec_.append(grd[i,j])
+
+    grd_vec = np.hstack(grd_vec_).squeeze()
+    prd_vec = np.hstack(prd_vec_).squeeze()
+
+    idxs = prd_vec.argsort()
+    # idxs = grd_vec.argsort()
+    grd_vec_sort = grd_vec[idxs]
+    prd_vec_sort = prd_vec[idxs]
+
+    error = np.abs(grd_vec_sort - prd_vec_sort)
+
+    l_errors = np.empty(5)
+    l_pccs = np.empty(5)
+    for i, num in enumerate([L, 2*L, 5*L, 10*L]):
+        grd_vec_trunc = grd_vec_sort[:num]
+        prd_vec_trunc = prd_vec_sort[:num]
+        l_errors[i] = error[:num].mean()
+        l_pccs[i] = get_pcc(grd_vec_trunc, prd_vec_trunc)
+    l_errors[-1] = error.mean()
+    l_pccs[-1] = get_pcc(grd_vec, prd_vec)
+
+    return torch.Tensor(l_pccs), torch.from_numpy(l_errors), torch.Tensor([])

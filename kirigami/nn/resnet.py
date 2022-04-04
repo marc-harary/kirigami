@@ -2,12 +2,13 @@ from typing import Optional, Tuple, List
 import torch
 from torch.nn import *
 from kirigami.nn.regularize import ActNormDrop
+from kirigami.nn.utils import AtomicModule
 
 
 __all__ = ["ResNetBlock", "ResNet"]
 
 
-class ResNetBlock(torch.nn.Module):
+class ResNetBlock(AtomicModule):
     """implements ResNet unit"""
     resnet: bool
     conv1: Module
@@ -25,35 +26,44 @@ class ResNetBlock(torch.nn.Module):
                  **kwargs) -> None:
         super().__init__()
         self.resnet = resnet
-        self.act_norm_drop1 = ActNormDrop(p=p,
-                                          act=act,
-                                          norm=norm,
-                                          **kwargs)
+        # self.act_norm_drop1 = ActNormDrop(p=p,
+        #                                   act=act,
+        #                                   norm=norm,
+        #                                   **kwargs)
         # self.act_norm_drop1 = eval(act)()
         self.conv1 = torch.nn.Conv2d(in_channels=n_channels,
                                      out_channels=n_channels,
                                      kernel_size=kernel_sizes[0],
                                      dilation=dilations[0],
                                      padding=self.get_padding(dilations[0], kernel_sizes[0]))
-        self.act_norm_drop2 = ActNormDrop(p=p,
-                                          act=act,
-                                          norm=norm,
-                                          **kwargs)
+        self.drop1 = torch.nn.Dropout(p=p)#, inplace=True)
+        self.norm1 = torch.nn.InstanceNorm2d(n_channels)
+        self.relu1 = torch.nn.ReLU(inplace=True)
+        # self.act_norm_drop2 = ActNormDrop(p=p,
+        #                                   act=act,
+        #                                   norm=norm,
+        #                                   **kwargs)
         # self.act_norm_drop2 = eval(act)()
         self.conv2 = torch.nn.Conv2d(in_channels=n_channels,
                                      out_channels=n_channels,
                                      kernel_size=kernel_sizes[1],
                                      dilation=dilations[1],
                                      padding=self.get_padding(dilations[1], kernel_sizes[1]))
+        self.norm2 = torch.nn.InstanceNorm2d(n_channels)
+        self.relu2 = torch.nn.ReLU(inplace=True)
 
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
         out = ipt
-        out = self.act_norm_drop1(out)
         out = self.conv1(out)
-        out = self.act_norm_drop2(out)
+        out = self.norm1(out)
+        out = self.relu1(out)
+        if self.training:
+            out = self.drop1(out)
         out = self.conv2(out)
+        out = self.norm2(out)
         if self.resnet:
             out += ipt
+        out = self.relu2(out)
         return out
 
     @staticmethod
@@ -97,15 +107,15 @@ class ResNet(torch.nn.Module):
                                  **kwargs) 
             block_list.append(block)
         self.blocks = Sequential(*block_list) 
-        self.conv_final = torch.nn.Conv2d(in_channels=n_channels,
-                                          out_channels=1,
-                                          kernel_size=kernel_sizes[0],
-                                          padding=1)
-        self.final_act = Sigmoid() if include_sigmoid else Identity()
+        # self.conv_final = torch.nn.Conv2d(in_channels=n_channels,
+        #                                   out_channels=1,
+        #                                   kernel_size=kernel_sizes[0],
+        #                                   padding=1)
+        # self.final_act = Sigmoid() if include_sigmoid else Identity()
         
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
         opt = self.conv_init(ipt)
         opt = self.blocks(opt)
-        opt = self.conv_final(opt)
-        opt = self.final_act(opt)
+        # opt = self.conv_final(opt)
+        # opt = self.final_act(opt)
         return opt

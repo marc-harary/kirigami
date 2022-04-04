@@ -19,6 +19,7 @@ from torch.utils.checkpoint import checkpoint_sequential
 from torch.nn.functional import binary_cross_entropy
 
 import kirigami.nn
+from kirigami.nn import loss
 from kirigami.nn.utils import *
 from kirigami.nn import WeightLoss, ForkL1 #ForkLoss, ForkLogCosh
 from kirigami.utils import *
@@ -27,10 +28,12 @@ from kirigami.utils.sampler import *
 
 def train(notes=None, **kwargs) -> None:
     p = munchify(kwargs)
+    p.data.bins = eval(p.data.bins)
+    p.criterion = eval(p.criterion)
     logging.basicConfig(format="%(message)s",
                         stream=sys.stdout,
                         level=logging.INFO)
-    logging.info("Run with config:\n" + str(kwargs).replace(", ", ",\n"))
+    logging.info("Run with config:\n" + str(kwargs).replace(", '", ",\n'"))
     if notes:
         print("*****N.B.*****", notes)
     print("\n\n")
@@ -59,8 +62,9 @@ def train(notes=None, **kwargs) -> None:
     g.DEVICE = DEVICE
     g.BEST_MCC = -float("inf")
     g.BEST_LOSS = float("inf") 
+    g.BEST_MAE = float("inf") 
     g.CRIT = p.criterion
-    g.OPT = eval(p.optimizer)(g.MODEL.parameters(), lr=p.lr)
+    g.OPT = eval(p.optimizer)(list(g.MODEL.parameters()) + list(g.CRIT.parameters()), lr=p.lr)
     g.SCALER = GradScaler() if g.DEVICE == torch.device("cuda") else None
     g.TR_LOADER = DataLoader(tr_set,
                              batch_size=g.BATCH_SIZE,
@@ -77,11 +81,12 @@ def train(notes=None, **kwargs) -> None:
                                                 device=g.DEVICE))
     g.TR_LEN = len(tr_set)
     g.VL_LOADER = DataLoader(vl_set, collate_fn=partial(collate_fn,
+                                                        return_raw=True,
                                                         use_thermo=p.data.use_thermo,
                                                         use_dist=p.data.use_dist,
                                                         ceiling=p.data.ceiling,
                                                         dist_idxs=p.data.dist_idxs,
-                                                        inv=p.data.inv,
+                                                        inv=False,
                                                         inv_eps=p.data.inv_eps,
                                                         multiclass=p.data.multiclass,
                                                         bins=p.data.bins.to(g.DEVICE),
@@ -133,9 +138,9 @@ def train(notes=None, **kwargs) -> None:
             dist_loss_tot += dist_loss
             con_loss_tot += con_loss
 
-        loss_avg = loss_tot / len(g.TR_LOADER) 
-        dist_loss_avg = dist_loss_tot / len(g.TR_LOADER) 
-        con_loss_avg = con_loss_tot / len(g.TR_LOADER) 
+        loss_avg = loss_tot / len(tr_set) 
+        dist_loss_avg = dist_loss_tot / len(tr_set) 
+        con_loss_avg = con_loss_tot / len(tr_set) 
         if p.tr_chk:
             torch.save({"epoch": epoch,
                         "model_state_dict": g.MODEL.state_dict(),
@@ -172,9 +177,9 @@ def train(notes=None, **kwargs) -> None:
 
         prd_grds = []
         with torch.no_grad():
-            for i, (ipt, grd) in enumerate(tqdm(g.VL_LOADER, disable=not p.bar)):
+            for i, (ipt, (grd, raw_dist)) in enumerate(tqdm(g.VL_LOADER, disable=not p.bar)):
                 prd = g.MODEL(ipt)
-                tot_loss, dist_loss, con_loss = g.CRIT(prd, grd)
+                tot_loss, dist_loss, con_loss = g.CRIT(prd, grd, dist_weight=1)
 
                 seq = fasta2str(ipt)
                 grd_set = grd2set(grd)
@@ -184,31 +189,30 @@ def train(notes=None, **kwargs) -> None:
                                   min_dist=4,
                                   min_prob=.5)
                 bin_scores = get_scores(prd_set, grd_set, len(seq))
-                
-                
+
                 if p.data.use_dist:
                     pcc_mol = 0 
                     mae_l_mol = 0
                     mae_dist_mol = 0
                     n_dists = len(prd) - 1
-                    for prd_tens, grd_tens in zip(prd[1:], grd[1:]):
+                    for prd_tens, grd_tens in zip(prd[1:], raw_dist):
                         prd_unembed = unembed(prd_tens,
-                                               ceiling=p.data.ceiling,
-                                               inv=p.data.inv,
-                                               bins=p.data.bins,
-                                               multiclass=p.data.multiclass,
-                                               inv_eps=p.data.inv_eps)
-                        grd_unembed = unembed(grd_tens,
-                                               ceiling=p.data.ceiling,
-                                               inv=p.data.inv,
-                                               bins=p.data.bins,
-                                               multiclass=p.data.multiclass,
-                                               inv_eps=p.data.inv_eps)
-                        pcc, mae_l, mae_dist = get_dists(prd_unembed, grd_unembed)
+                                              ceiling=p.data.ceiling,
+                                              inv=p.data.inv,
+                                              bins=p.data.bins,
+                                              multiclass=p.data.multiclass,
+                                              inv_eps=p.data.inv_eps)
+                        # grd_unembed = unembed(grd_tens,
+                        #                        ceiling=p.data.ceiling,
+                        #                        inv=p.data.inv,
+                        #                        bins=p.data.bins,
+                        #                        multiclass=p.data.multiclass,
+                        #                        inv_eps=p.data.inv_eps)
+                        # pcc, mae_l, mae_dist = get_dists(prd_unembed, grd_unembed, bins=p.data.bins)
+                        pcc, mae_l, mae_dist = get_dists(prd_unembed, grd_tens.detach().cpu().numpy().squeeze(), bins=p.data.bins)
                         pcc_mol += pcc / n_dists
                         mae_l_mol += mae_l / n_dists
                         mae_dist_mol += mae_dist / n_dists
-                    # import pdb; pdb.set_trace()
                     pccs.append(pcc_mol)
                     mae_ls.append(mae_l_mol)
                     mae_dists.append(mae_dist_mol)
@@ -222,14 +226,14 @@ def train(notes=None, **kwargs) -> None:
                 grd_pairs_tot += bin_scores["n_grd"]
                 # dist_errors_pccs_tot += dist_errors_pccs
                 ls.append(len(seq))
-                prd_grds.append((grd, prd))
+                prd_grds.append(((grd, raw_dist), prd))
 
-        if epoch == p.save_epoch:
-            if not p.out_file:
-                out_time = int(time.time()) % 100_000
-                p.out_file = f"{out_time}_vals.pt"
-            torch.save(prd_grds, p.out_file)
-            logging.info(f"\nSaving data as {p.out_file}\n")
+        # if epoch == p.save_epoch:
+        #     if not p.out_file:
+        #         out_time = int(time.time()) % 100_000
+        #         p.out_file = f"{out_time}_vals.pt"
+        #     torch.save(prd_grds, p.out_file)
+        #     logging.info(f"\nSaving data as {p.out_file}\n")
 
         mcc_mean = mcc_tot / g.VL_LEN
         raw_loss_mean = raw_loss_tot / g.VL_LEN
@@ -240,11 +244,9 @@ def train(notes=None, **kwargs) -> None:
         grd_pairs_mean = grd_pairs_tot / g.VL_LEN
 
         pccs = torch.stack(pccs)
-        pcc_mean = torch.tensor(pccs).mean(0)
-        # mae_l_mean = torch.stack(mae_ls).mean(0).tolist()
-        mae_l_mean = torch.stack(mae_ls).mean()
+        pcc_mean = pccs.mean(0)
+        mae_l_mean = torch.stack(mae_ls).mean(0).tolist()
         mae_dist_mean = torch.stack(mae_dists).mean(0).tolist()
-        # dist_errors_pccs_mean = (dist_errors_pccs_tot / g.VL_LEN).tolist()
 
         delta = datetime.datetime.now() - start
         mess = (f"Validation time: {delta.seconds}s\n" +
@@ -277,6 +279,17 @@ def train(notes=None, **kwargs) -> None:
                             "dist_errors_mean": dist_errors_mean},
                            p.vl_chk)
             mess += f"*****NEW MAXIMUM MCC*****\n"
+        if mae_l_mean[0] < g.BEST_MAE:
+            g.BEST_MAE = mae_l_mean[0]
+            mess += f"*****NEW MINIMUM L1 MAE*****\n"
+            if not p.out_file:
+                out_time = int(time.time()) % 100_000
+                p.out_file = f"{out_time}_vals.pt"
+            # torch.save(prd_grds, p.out_file)
+            # torch.save([g.MODEL.cpu(), prd_grds], p.out_file)
+            torch.save(g.MODEL.cpu(), p.out_file)
+            mess += f"Saving predictions to {p.out_file}...\n"
+            g.MODEL.to(g.DEVICE)
         mess += "\n\n"
         logging.info(mess)
         g.MODEL.train()

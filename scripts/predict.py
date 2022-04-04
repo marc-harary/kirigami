@@ -63,7 +63,7 @@ def main():
     parser.add_argument("-c", "--contact", help="Path to output contact Numpy file.")
     args = parser.parse_args()
 
-    model = torch.load(args.model, map_location=torch.device("cpu"))[0]
+    model = torch.load(args.model, map_location=torch.device("cpu"))
     if torch.cuda.is_available() and not args.disable_cuda:
         device = torch.device("cuda")
         model.to(device)

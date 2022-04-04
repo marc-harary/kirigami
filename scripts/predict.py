@@ -79,9 +79,11 @@ def main():
     ipt = ipt.float()
     
     out = model(ipt)
-    out = tuple([tens.detach().cpu().numpy().squeeze() for tens in out])
-    dists = np.stack(out[1:])
-    con = out[0]
+    con, *dists = out
+    dists = torch.cat(dists, dim=0)
+    dists = dists.softmax(dim=1)
+    dists = dists.detach().cpu().numpy().squeeze()
+    con = con.detach().cpu().numpy().squeeze()
 
     np.save(args.dists, dists)
     np.save(args.contact, con)

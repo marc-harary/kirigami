@@ -13,7 +13,8 @@ class Symmetrize(nn.Module):
     def forward(self, ipt):
         out = []
         if isinstance(ipt, Tuple):
-            out = tuple((((tens + torch.transpose(tens, -1, -2)) / 2) for tens in ipt))
+            # out = tuple((((tens + torch.transpose(tens, -1, -2)) / 2) for tens in ipt))
+            out = ((ipt[0] + torch.transpose(ipt[0], -1, -2))/2,) + (tuple((((tens + torch.transpose(tens, -1, -2)) / 2) for tens in ipt[1])),) + (tuple((((tens + torch.transpose(tens, -1, -2)) / 2) for tens in ipt[2])),)
         else:
             out = (ipt + torch.transpose(ipt, -1, -2)) / 2
         return out

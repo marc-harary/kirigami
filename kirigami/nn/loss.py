@@ -8,7 +8,8 @@ from kirigami.nn.utils import *
 from torch.nn.functional import tanh
 
 
-__all__ = ["InverseLoss", "LossEmbedding", "WeightLoss", "ForkL1", "ForkLoss", "CEMulti"]
+# __all__ = ["InverseLoss", "LossEmbedding", "WeightLoss", "ForkL1", "ForkLoss", "CEMulti"]
+__all__ = ["InverseLoss", "LossEmbedding", "WeightLoss", "ForkLoss", "CEMulti"]
 
 
 class InverseLoss(nn.Module):
@@ -66,176 +67,65 @@ class WeightLoss(nn.Module):
         loss = self._loss(prd, grd)
         loss[grd == 0] *= self._weight
         loss[grd == 1] *= 1 - self._weight
-        return loss.sum()
-
-
-# class ForkLoss(nn.Module):
-#     def __init__(self,
-#                  pos_weight: float,
-#                  dist_weight: float,
-#                  n_dists: int = 10) -> None:
-#         super().__init__()
-#         assert 0.0 <= dist_weight <= 1.0
-#         self._weight_loss = WeightLoss(pos_weight)
-#         self._dist_weight = dist_weight
-#         self._n_dists = n_dists 
-#         self._dist_loss = nn.L1Loss(reduction="none")
-#         # self._dist_loss = nn.MSELoss(reduction="none")
-#         
-#     def forward(self,
-#                 prd: Tuple[torch.Tensor, torch.Tensor],
-#                 grd: Tuple[torch.Tensor, torch.Tensor]) -> torch.Tensor:
-#         prd_con, prd_dist = prd
-#         grd_con, grd_dist = grd
-#         con_loss = self._weight_loss(prd_con, grd_con) 
-#         length = prd_dist.shape[-1]
-#         diags = torch.arange(length)
-#         # diffs = self._dist_loss(1/prd_dist, 1/grd_dist)
-#         diffs = self._dist_loss(prd_dist, grd_dist)
-#         diffs[:, :, diags, diags] = 0
-#         # diffs[grd_dist < 0] = 0
-#         diffs[grd_dist == 0] = 0
-#         diffs *= torch.exp(-3*grd_dist)
-#         # L1 loss
-#         dist_loss = torch.sum(diffs)
-#         return (self._dist_weight*dist_loss + (1-self._dist_weight)*con_loss,
-#                 dist_loss.item(),
-#                 con_loss.item())
-
-# class ForkLogCosh(nn.Module):
-#     def __init__(self, pos_weight: float, dist_weight: float):
-#         super().__init__()
-#         assert 0.0 <= dist_weight <= 1.0
-#         self._log2 = log(2)
-#         self._weight_loss = WeightLoss(pos_weight)
-#         self._dist_weight = dist_weight
-#         self._dist_loss = nn.L1Loss(reduction="none")
-# 
-# 
-#     def forward(self, prd: tuple, grd: tuple):
-#         prd_con, prd_dist = prd
-#         grd_con, grd_dist = grd
-# 
-#         # prd_dist = 1 / prd_dist 
-#         # grd_dist = 1 / grd_dist 
-#         # diff = prd_dist - grd_dist
-#         # diff *= self._K
-#         # dist_loss = diff + F.softplus(-2.*diff) - self._log2
-#         # dist_loss = torch.abs(diff)
-#         con_loss = self._weight_loss(prd_con, grd_con) 
-# 
-#         dist_loss = self._dist_loss(prd_dist, grd_dist)
-#         length = prd_dist.shape[-1]
-#         diags = torch.arange(length)
-#         dist_loss[:, :, diags, diags] = 0.
-#         dist_loss[grd_dist <= 0] = 0.
-#         dist_loss[grd_dist == 1] = 0.
-#         dist_loss = torch.sum(dist_loss)
-# 
-#         tot_loss = self._dist_weight*dist_loss + (1.-self._dist_weight)*con_loss
-# 
-#         return tot_loss, dist_loss.item(), con_loss.item()
-
-
-class ForkL1(nn.Module):
-    def __init__(self,
-                 pos_weight: float,
-                 dist_weight: float,
-                 dropout: bool = True,
-                 inv: bool = False,
-                 f = None):
-        super().__init__()
-        assert 0.0 <= dist_weight <= 1.0
-        self._dropout = dropout
-        self._dist_weight = dist_weight
-        self._weight_crit = WeightLoss(pos_weight)
-        self._dist_crit = nn.L1Loss(reduction="none")
-        self._inv = inv
-        self._f = f if f else lambda x: x
-
-
-    def forward(self, prd: tuple, grd: tuple):
-        prd_con, prd_dist = prd
-        grd_con, grd_dist = grd
-
-        if self._inv:
-            grd_dist_ = 1 / (grd_dist + 1e-16)
-            grd_dist_[grd_dist == 0] = 0 
-            prd_dist_ = 1 / (prd_dist + 1e-16)
-            dist_loss = self._dist_crit(prd_dist_, grd_dist_)
-        else:
-            dist_loss = self._dist_crit(prd_dist, grd_dist)
-        con_loss = self._weight_crit(prd_con, grd_con) 
-
-        length = prd_dist.shape[-1]
-        diags = torch.arange(length)
-        dist_loss[:, :, diags, diags] = 0.
-        dist_loss[grd_dist <= 0] = 0.
-        if self._dropout:
-            probs = torch.rand(grd_dist.shape, device=grd_dist.device)
-            mask = probs < self._f(grd_dist)
-            dist_loss[mask] = 0.
-        dist_loss[grd_dist == 1] = 0.
-        dist_loss = torch.sum(dist_loss)
-
-        tot_loss = self._dist_weight*dist_loss + (1.-self._dist_weight)*con_loss
-
-        return tot_loss, dist_loss.item(), con_loss.item()
+        # return loss.sum()
+        return loss.mean()
 
 
 class CEMulti(nn.Module):
     def __init__(self):
         super().__init__()
-        # self.weights = torch.tanh(torch.linspace(1,0.1,38)).cuda()
-        # self.cross_entropy_loss = nn.CrossEntropyLoss(weight=self.weights, reduction="none")
-        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction="none")
+        self.cross_entropy_loss = nn.CrossEntropyLoss(reduction="sum")
 
-    def forward(self, target, rhs):
-        mask = target[:, 0, :, :].isnan()
+    def forward(self, input, target):
         target_idxs = target.argmax(1)
-        loss = self.cross_entropy_loss(rhs, target_idxs)
-        loss[mask] = 0.
-        return loss.sum()
+        loss = F.nll_loss(F.log_softmax(input, dim=1), target_idxs, reduction="none")
+        return loss[~target[:,0,...].isnan()].sum()
 
 
 class ForkLoss(nn.Module):
     def __init__(self,
                  dist_crit: nn.Module,
                  pos_weight: float = None,
-                 dist_weight: float = None,
+                 bin_weight: float = None,
+                 inv_weight: float = None,
                  dropout: bool = False,
                  f = None):
         super().__init__()
-        assert 0.0 <= dist_weight <= 1.0
+        # assert 0.0 <= dist_weight <= 1.0
         self._dist_crit = dist_crit
-        self._dropout = dropout
-        self._dist_weight = dist_weight
-        self._weight_crit = WeightLoss(pos_weight)
-        self._f = f if f else lambda x: x
-        # self.weight = nn.Parameter(torch.randn(1).cuda())
-        # self.weight = nn.Parameter(torch.zeros(11, device=torch.device("cuda")))
+        self.pos_weight = pos_weight
+        self.bin_weight = bin_weight
+        self.inv_weight = inv_weight
 
 
     def forward(self, prd: tuple, grd: tuple, dist_weight: Optional[float] = None):
-        dist_weight = dist_weight or self._dist_weight
-        prd_con, *prd_dists = prd
-        grd_con, *grd_dists = grd
+        prd_con, prd_bin, prd_inv = prd
+        grd_con, grd_bin, grd_inv = grd
 
-        con_loss = self._weight_crit(prd_con,grd_con)
-        # tot_loss = torch.exp(-self.weight[0]) * con_loss + self.weight[0]
-        # tot_loss = (1-dist_weight) * con_loss
-        tot_loss = (1-dist_weight) * con_loss
-        dist_loss_all = 0
+        con_loss_tens = F.binary_cross_entropy(prd_con, grd_con, reduction="none")
+        con_loss_tens[grd_con == 0] *= self.pos_weight
+        con_loss_tens[grd_con == 1] *= 1 - self.pos_weight
+        # con_loss = con_loss_tens.sum()
+        con_loss = con_loss_tens.mean()
 
-        for i, (grd_dist, prd_dist) in enumerate(zip(grd_dists, prd_dists)):
-            dist_loss = dist_weight * self._dist_crit(grd_dist, prd_dist)
-            dist_loss_all += dist_loss.item()
-            tot_loss += dist_loss
+        tot_loss = (1-self.inv_weight-self.bin_weight) * con_loss
+        bin_loss_all = 0
+        inv_loss_all = 0
 
-        # tot_loss = torch.exp(-self.weight[0])*con_loss + torch.exp(-self.weight[1])*dist_loss_all
-        # weight = torch.exp(-self.weight)
-        # tot_loss = weight[0]*con_loss + weight[0] + weight[1]*dist_loss_all + weight[1]
+        for i, (grd_dist, prd_dist) in enumerate(zip(grd_bin, prd_bin)):
+            prd_dist[grd_dist.isnan()] = 0
+            grd_dist[grd_dist.isnan()] = 0
+            dist_loss = F.cross_entropy(prd_dist, grd_dist.argmax(1))#, reduction="sum")
+            bin_loss_all += dist_loss.item()
+            tot_loss += self.bin_weight * dist_loss
 
-        # return tot_loss, dist_loss_all.item(), con_loss.item() # dist_loss_all, dist_loss_all.item(), con_loss.item()
-        # return tot_loss, dist_loss.item(), con_loss.item()
-        return tot_loss, dist_loss.item(), con_loss.item()
+        for i, (grd_dist, prd_dist) in enumerate(zip(grd_inv, prd_inv)):
+            diff = prd_dist - grd_dist
+            dist_loss = diff + F.softplus(-2.*diff) - log(2.)
+            dist_loss = torch.abs(diff)
+            # dist_loss = dist_loss[~grd_dist.isnan()].sum()
+            dist_loss = dist_loss[~grd_dist.isnan()].mean()
+            inv_loss_all += dist_loss.item()
+            tot_loss += self.inv_weight * dist_loss
+
+        return tot_loss, bin_loss_all, inv_loss_all, con_loss.item()

@@ -21,7 +21,7 @@ from torch.nn.functional import binary_cross_entropy
 import kirigami.nn
 from kirigami.nn import loss
 from kirigami.nn.utils import *
-from kirigami.nn import WeightLoss, ForkL1 #ForkLoss, ForkLogCosh
+# from kirigami.nn import WeightLoss, ForkL1 #ForkLoss, ForkLogCosh
 from kirigami.utils import *
 from kirigami.utils.sampler import *
 
@@ -67,8 +67,10 @@ def train(notes=None, **kwargs) -> None:
     g.OPT = eval(p.optimizer)(list(g.MODEL.parameters()) + list(g.CRIT.parameters()), lr=p.lr)
     g.SCALER = GradScaler() if g.DEVICE == torch.device("cuda") else None
     g.TR_LOADER = DataLoader(tr_set,
-                             batch_size=g.BATCH_SIZE,
-                             batch_sampler=g.SAMPLER,
+                             # batch_size=g.BATCH_SIZE,g.BATCH_SIZE,
+                             batch_size=1,
+                             # batch_sampler=g.SAMPLER,
+                             batch_sampler=None,
                              collate_fn=partial(collate_fn,
                                                 use_thermo=p.data.use_thermo,
                                                 use_dist=p.data.use_dist,
@@ -81,7 +83,7 @@ def train(notes=None, **kwargs) -> None:
                                                 device=g.DEVICE))
     g.TR_LEN = len(tr_set)
     g.VL_LOADER = DataLoader(vl_set, collate_fn=partial(collate_fn,
-                                                        return_raw=True,
+                                                        # return_raw=True,
                                                         use_thermo=p.data.use_thermo,
                                                         use_dist=p.data.use_dist,
                                                         ceiling=p.data.ceiling,
@@ -94,6 +96,7 @@ def train(notes=None, **kwargs) -> None:
     g.VL_LEN = len(vl_set)
     g.START_EPOCH = 0
 
+    print(g.MODEL)
 
     # reload model if resume
     if p.resume:
@@ -111,7 +114,8 @@ def train(notes=None, **kwargs) -> None:
         print(start)
         logging.info(f"Beginning epoch {epoch}")
         loss_tot = 0.
-        dist_loss_tot = 0.
+        bin_loss_tot = 0.
+        inv_loss_tot = 0.
         con_loss_tot = 0.
 
         for i, (ipt, grd) in enumerate(tqdm(g.TR_LOADER, disable=not p.bar)):
@@ -119,8 +123,10 @@ def train(notes=None, **kwargs) -> None:
                 if p.chkpt_seg > 0:
                     prd = checkpoint_sequential(g.MODEL, p.chkpt_seg, ipt)
                 else:
+                    import pdb; pdb.set_trace()
                     prd = g.MODEL(ipt)
-                loss, dist_loss, con_loss = g.CRIT(prd, grd)
+                loss, bin_loss, inv_loss, con_loss = g.CRIT(prd, grd)
+                # loss, bin_loss, con_loss = g.CRIT(prd, grd)
                 loss /= p.iter_acc
             if g.SCALER:
                 g.SCALER.scale(loss).backward()
@@ -135,11 +141,13 @@ def train(notes=None, **kwargs) -> None:
                     g.OPT.step()
                 g.OPT.zero_grad(set_to_none=True)
             loss_tot += loss.item() * p.iter_acc
-            dist_loss_tot += dist_loss
+            bin_loss_tot += bin_loss
+            # inv_loss_tot += inv_loss
             con_loss_tot += con_loss
 
         loss_avg = loss_tot / len(tr_set) 
-        dist_loss_avg = dist_loss_tot / len(tr_set) 
+        bin_loss_avg = bin_loss_tot / len(tr_set) 
+        inv_loss_avg = inv_loss_tot / len(tr_set) 
         con_loss_avg = con_loss_tot / len(tr_set) 
         if p.tr_chk:
             torch.save({"epoch": epoch,
@@ -152,7 +160,8 @@ def train(notes=None, **kwargs) -> None:
         delta = end - start
         mess = (f"Training time for epoch {epoch}: {delta.seconds}s\n" +
                 f"Mean total training loss for epoch {epoch}: {loss_avg}\n" +
-                f"Mean distance loss for epoch {epoch}: {dist_loss_avg}\n" +
+                f"Mean bin loss for epoch {epoch}: {bin_loss_avg}\n" +
+                f"Mean inv loss for epoch {epoch}: {inv_loss_avg}\n" +
                 f"Mean contact loss for epoch {epoch}: {con_loss_avg}\n" +
                 f"Memory allocated: {torch.cuda.memory_allocated() / 2**20} MB\n" +
                 f"Memory reserved: {torch.cuda.memory_reserved() / 2**20} MB")
@@ -172,18 +181,21 @@ def train(notes=None, **kwargs) -> None:
         f1_tot = prd_pairs_tot = grd_pairs_tot = 0
         ls, pccs, mae_ls, mae_dists = [], [], [], []
         con_loss_tot = 0
-        dist_loss_tot = 0
+        bin_dist_loss_tot = 0
+        inv_dist_loss_tot = 0
         count = 0
 
         prd_grds = []
         with torch.no_grad():
-            for i, (ipt, (grd, raw_dist)) in enumerate(tqdm(g.VL_LOADER, disable=not p.bar)):
+            for i, (ipt, grd) in enumerate(tqdm(g.VL_LOADER, disable=not p.bar)):
                 prd = g.MODEL(ipt)
-                tot_loss, dist_loss, con_loss = g.CRIT(prd, grd, dist_weight=1)
+
+                prd_con, prd_bin, prd_inv = prd
+                grd_con, grd_bin, grd_inv = grd
 
                 seq = fasta2str(ipt)
-                grd_set = grd2set(grd)
-                prd_set = prd2set(ipt=prd,
+                grd_set = grd2set(grd_con)
+                prd_set = prd2set(ipt=prd_con,
                                   seq=seq,
                                   thres_pairs=len(grd_set),
                                   min_dist=4,
@@ -195,7 +207,9 @@ def train(notes=None, **kwargs) -> None:
                     mae_l_mol = 0
                     mae_dist_mol = 0
                     n_dists = len(prd) - 1
-                    for prd_tens, grd_tens in zip(prd[1:], raw_dist):
+                    for prd_tens, grd_tens in zip(prd_bin, grd_inv):
+                        raw_dist = 1 / (grd_tens - p.data.inv_eps)
+                        raw_dist = raw_dist.detach().cpu().numpy().squeeze()
                         prd_unembed = unembed(prd_tens,
                                               ceiling=p.data.ceiling,
                                               inv=p.data.inv,
@@ -209,17 +223,20 @@ def train(notes=None, **kwargs) -> None:
                         #                        multiclass=p.data.multiclass,
                         #                        inv_eps=p.data.inv_eps)
                         # pcc, mae_l, mae_dist = get_dists(prd_unembed, grd_unembed, bins=p.data.bins)
-                        pcc, mae_l, mae_dist = get_dists(prd_unembed, grd_tens.detach().cpu().numpy().squeeze(), bins=p.data.bins)
+                        pcc, mae_l, mae_dist = get_dists(prd_unembed, raw_dist, bins=p.data.bins)
                         pcc_mol += pcc / n_dists
                         mae_l_mol += mae_l / n_dists
                         mae_dist_mol += mae_dist / n_dists
                     pccs.append(pcc_mol)
                     mae_ls.append(mae_l_mol)
                     mae_dists.append(mae_dist_mol)
+
+                tot_loss, bin_dist_loss, inv_dist_loss, con_loss = g.CRIT(prd, grd)
     
                 raw_loss_tot += tot_loss.item()
                 con_loss_tot += con_loss
-                dist_loss_tot += dist_loss
+                bin_dist_loss_tot += bin_dist_loss
+                # inv_dist_loss_tot += inv_dist_loss
                 mcc_tot += bin_scores["mcc"]
                 f1_tot += bin_scores["f1"]
                 prd_pairs_tot += bin_scores["n_prd"]
@@ -237,7 +254,8 @@ def train(notes=None, **kwargs) -> None:
 
         mcc_mean = mcc_tot / g.VL_LEN
         raw_loss_mean = raw_loss_tot / g.VL_LEN
-        dist_loss_mean = dist_loss_tot / g.VL_LEN
+        bin_dist_loss_mean = bin_dist_loss_tot / g.VL_LEN
+        inv_dist_loss_mean = inv_dist_loss_tot / g.VL_LEN
         con_loss_mean = con_loss_tot / g.VL_LEN
         f1_mean = f1_tot / g.VL_LEN
         prd_pairs_mean = prd_pairs_tot / g.VL_LEN
@@ -252,11 +270,13 @@ def train(notes=None, **kwargs) -> None:
         mess = (f"Validation time: {delta.seconds}s\n" +
                 f"Total validation loss: {raw_loss_mean}\n" +
                 f"Contact validation loss: {con_loss_mean}\n" +
-                f"Distance validation loss: {dist_loss_mean}\n" +
+                f"Bin distance validation loss: {bin_dist_loss_mean}\n" +
+                f"Inv distance validation loss: {inv_dist_loss_mean}\n" +
                 f"MCC: {mcc_mean}\n" +
-                f"L1 error by L: {mae_l_mean}\n" +
-                f"PCC: {pcc_mean}\n" +
-                f"L1 error by dist: {mae_dist_mean}\n" +
+                f"L1 MAE (prd): {mae_l_mean[:5]}\n" +
+                f"PCC (prd): {pcc_mean[:5]}\n" +
+                f"L1 MAE (grd): {mae_l_mean[5:]}\n" +
+                f"PCC (grd): {pcc_mean[5:]}\n" +
                 f"Ground pairs: {grd_pairs_mean}\n" +
                 f"Predicted pairs: {prd_pairs_mean}\n")
         if mcc_mean > g.BEST_MCC:
@@ -279,15 +299,20 @@ def train(notes=None, **kwargs) -> None:
                             "dist_errors_mean": dist_errors_mean},
                            p.vl_chk)
             mess += f"*****NEW MAXIMUM MCC*****\n"
+            # if not p.out_file:
+            #     out_time = int(time.time()) % 100_000
+            #     p.out_file = f"{out_time}_vals.pt"
+            # torch.save(prd_grds, p.out_file)
+            # mess += f"Saving predictions to {p.out_file}...\n"
         if mae_l_mean[0] < g.BEST_MAE:
             g.BEST_MAE = mae_l_mean[0]
             mess += f"*****NEW MINIMUM L1 MAE*****\n"
             if not p.out_file:
                 out_time = int(time.time()) % 100_000
                 p.out_file = f"{out_time}_vals.pt"
-            # torch.save(prd_grds, p.out_file)
+            torch.save(prd_grds, p.out_file)
             # torch.save([g.MODEL.cpu(), prd_grds], p.out_file)
-            torch.save(g.MODEL.cpu(), p.out_file)
+            # torch.save(g.MODEL.cpu(), p.out_file)
             mess += f"Saving predictions to {p.out_file}...\n"
             g.MODEL.to(g.DEVICE)
         mess += "\n\n"

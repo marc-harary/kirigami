@@ -41,10 +41,10 @@ class Fork(nn.Module):
 
     def forward(self, ipt):
         opt = {}
-        # opt["dists"] = {}
+        opt["dists"] = {}
         opt["con"] = self.con_conv(ipt).sigmoid()
         for dist_type in self.dist_types:
             head = getattr(self, dist_type)
-            # opt["dists"][dist_type] = head(ipt)
-            opt[dist_type] = tuple(head(ipt).values())
-        return tuple(opt.values())
+            opt["dists"][dist_type] = head(ipt)
+            # opt[dist_type] = tuple(head(ipt).values())
+        return opt

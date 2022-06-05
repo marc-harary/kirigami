@@ -66,10 +66,10 @@ class DataModule(pl.LightningDataModule):
             pet = pet_.to_dense().unsqueeze(0).unsqueeze(0)
         except: # error handling accounts for what's probably a PyTorch bug
             pet = torch.zeros(1, seq.shape[-1], seq.shape[-1])
-        feat = torch.cat((seq, pet), 1)
+        feat = torch.cat((seq, pet), 1).float()
         # create label dictionary
         lab = {}
-        lab["con"] = dssr_.to_dense()
+        lab["con"] = dssr_.to_dense().float()
         lab["dists"] = {}
         for dist_type, dist_ in zip(self.dist_types, dists_):
             lab["dists"][dist_type] = {}

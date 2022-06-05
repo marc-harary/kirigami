@@ -1,32 +1,44 @@
 import torch
 import torch.nn as nn
+from torch import optim
 import torch.nn.functional as F
 import pytorch_lightning as pl
 import torchmetrics
 
 
 class KirigamiModule(pl.LightningModule):
+    
+    Ls = [1, 2, 5, 10]
+    dist_types = ["PP", "O5O5", "C5C5", "C4C4", "C3C3", "C2C2", "C1C1", "O4O4", "O3O3", "NN"]
+    
     def __init__(self, net, crit):
         super().__init__()
         self.net = net
         self.crit = crit
-
-        self.val_mcc = torchmetrics.MatthewsCorrCoef(num_classes=2)
-        for i in [1, 2, 5, 10]:
-            setattr(self, f"pcc{i}", torchmetrics.PearsonCorrCoef())
-            setattr(self, f"mae{i}", torchmetrics.MeanAbsoluteError())
+        self.val_metrics = {}
+        self.val_metrics["con"] = torchmetrics.MatthewsCorrCoef(num_classes=2)
+        self.val_metrics["dists"] = {}
+        for dist_type in self.dist_types:
+            self.val_metrics["dists"][dist_type] = {}
+            self.val_metrics["dists"][dist_type]["bin"] = {}
+            self.val_metrics["dists"][dist_type]["inv"] = {}
+            for i in self.Ls:
+                self.val_metrics["dists"][dist_type]["bin"][f"pcc{i}"] = torchmetrics.PearsonCorrCoef()
+                self.val_metrics["dists"][dist_type]["bin"][f"mae{i}"] = torchmetrics.PearsonCorrCoef()
+                self.val_metrics["dists"][dist_type]["inv"][f"pcc{i}"] = torchmetrics.MeanAbsoluteError()
+                self.val_metrics["dists"][dist_type]["inv"][f"mae{i}"] = torchmetrics.MeanAbsoluteError()
         
 
     def training_step(self, batch, batch_idx):
         feat, lab_grd = batch
         lab_prd = self.net(feat)
         loss_dict = self.crit(lab_prd, lab_grd)
-        self.log("train_loss",
-                 bin_loss,
-                 on_step=True,
-                 on_epoch=True,
-                 prog_bar=True,
-                 logger=True)
+        # self.log("train_loss",
+        #          bin_loss,
+        #          on_step=True,
+        #          on_epoch=True,
+        #          prog_bar=True,
+        #          logger=True)
         return loss_dict["tot"]
 
 

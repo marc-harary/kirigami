@@ -85,11 +85,11 @@ class ForkLoss(nn.Module):
         loss_dict = {}
 
         # contact loss
-        prd["con"][grd["con"].isnan()] = 0
-        grd["con"][grd["con"].isnan()] = 0
-        con_loss_tens = F.binary_cross_entropy(prd["con"], grd["con"], reduction="none")
-        con_loss_tens[grd["con"] == 0] *= self.pos_weight
-        con_loss_tens[grd["con"] == 1] *= 1 - self.pos_weight
+        # prd["con"][..., grd["con"].isnan()] = 0
+        grd["con"][..., grd["con"].isnan()] = 0
+        con_loss_tens = F.binary_cross_entropy(prd["con"], grd["con"].reshape_as(prd["con"]), reduction="none")
+        con_loss_tens[..., grd["con"] == 0] *= self.pos_weight
+        con_loss_tens[..., grd["con"] == 1] *= 1 - self.pos_weight
         con_loss = con_loss_tens.mean()
         loss_dict["con"] = con_loss
 
@@ -98,12 +98,12 @@ class ForkLoss(nn.Module):
         for ((key, prd_val), (_, grd_val)) in zip(prd["dists"].items(), grd["dists"].items()):
             loss_dict[key] = {}
             # bin loss
-            prd_val["bin"][grd_val["bin"].isnan()] = 0
-            grd_val["bin"][grd_val["bin"].isnan()] = 0
+            # prd_val["bin"][..., grd_val["bin"].isnan()] = 0
+            grd_val["bin"][..., grd_val["bin"].isnan()] = 0
             loss_dict[key]["bin"] = F.cross_entropy(prd_val["bin"], grd_val["bin"].argmax(1))
             tot_loss += self.bin_weight * loss_dict[key]["bin"]
             # inv loss
-            prd_val["inv"][grd_val["inv"].isnan()] = 0
+            # prd_val["inv"][grd_val["inv"].isnan()] = 0
             grd_val["inv"][grd_val["inv"].isnan()] = 0
             diff = prd_val["inv"] - grd_val["inv"]
             loss_dict[key]["inv"] = torch.mean(torch.abs(diff + F.softplus(-2.*diff) - log(2.)))

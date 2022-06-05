@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import os
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 
@@ -22,11 +23,11 @@ class DataModule(pl.LightningDataModule):
 
 
     def train_dataloader(self):
-        return DataLoader(self.train_dataset, collate_fn=self._collate_fn, shuffle=True)
+        return DataLoader(self.train_dataset, collate_fn=self._collate_fn, shuffle=True, batch_size=1)
 
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset, collate_fn=self._collate_fn, shuffle=False)
+        return DataLoader(self.val_dataset, collate_fn=self._collate_fn, shuffle=False, batch_size=1)
 
 
     def _concat(self, fasta):
@@ -65,7 +66,7 @@ class DataModule(pl.LightningDataModule):
         try:
             pet = pet_.to_dense().unsqueeze(0).unsqueeze(0)
         except: # error handling accounts for what's probably a PyTorch bug
-            pet = torch.zeros(1, seq.shape[-1], seq.shape[-1])
+            pet = torch.zeros(1, 1, seq.shape[-1], seq.shape[-1])
         feat = torch.cat((seq, pet), 1).float()
         # create label dictionary
         lab = {}

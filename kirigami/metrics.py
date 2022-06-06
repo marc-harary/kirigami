@@ -6,10 +6,11 @@ from torchmetrics import Metric
 class GroundMCC(Metric):
 
 
-    self._pairs = {"AU", "UA", "CG", "GC", "GU", "UG"}
+    _pairs = {"AU", "UA", "CG", "GC", "GU", "UG"}
 
 
     def __init__(self):
+        super().__init__()
         self.add_state("tp", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("tn", default=torch.tensor(0), dist_reduce_fx="sum")
         self.add_state("fp", default=torch.tensor(0), dist_reduce_fx="sum")

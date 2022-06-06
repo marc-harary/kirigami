@@ -33,12 +33,16 @@ class KirigamiModule(pl.LightningModule):
         feat, lab_grd = batch
         lab_prd = self.net(feat)
         loss_dict = self.crit(lab_prd, lab_grd)
-        # self.log("train_loss",
-        #          bin_loss,
-        #          on_step=True,
-        #          on_epoch=True,
-        #          prog_bar=True,
-        #          logger=True)
+        self.log("train_tot_loss",
+                 loss_dict["tot"],
+                 on_epoch=True,
+                 prog_bar=True,
+                 logger=True)
+        self.log("train_con_loss",
+                 loss_dict["con"],
+                 on_epoch=True,
+                 prog_bar=True,
+                 logger=True)
         return loss_dict["tot"]
 
 

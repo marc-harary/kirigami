@@ -19,7 +19,9 @@ class ForkHead(nn.Module):
     def forward(self, ipt):
         opt = {}
         opt["bin"] = self.bin_conv(ipt)
+        opt["bin"] = (opt["bin"] + opt["bin"].transpose(-1, -2)) / 2
         opt["inv"] = self.inv_conv(ipt).sigmoid()
+        opt["inv"] = (opt["inv"] + opt["inv"].transpose(-1, -2)) / 2
         return opt
         
 
@@ -43,8 +45,8 @@ class Fork(nn.Module):
         opt = {}
         opt["dists"] = {}
         opt["con"] = self.con_conv(ipt).sigmoid()
+        opt["con"] = (opt["con"] + opt["con"].transpose(-1, -2)) / 2
         for dist_type in self.dist_types:
             head = getattr(self, dist_type)
             opt["dists"][dist_type] = head(ipt)
-            # opt[dist_type] = tuple(head(ipt).values())
         return opt

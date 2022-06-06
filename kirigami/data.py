@@ -71,6 +71,9 @@ class DataModule(pl.LightningDataModule):
         # create label dictionary
         lab = {}
         lab["con"] = dssr_.to_dense().float()
+        # zero out diagonal
+        diag = torch.arange(seq.shape[-1])
+        lab["con"][..., diag, diag] = torch.nan
         lab["dists"] = {}
         for dist_type, dist_ in zip(self.dist_types, dists_):
             lab["dists"][dist_type] = {}

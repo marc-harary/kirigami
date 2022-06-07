@@ -1,60 +1,37 @@
-import sys
-import json
-from kirigami.core import train
-from kirigami.nn import loss
 import torch
 import torch.nn as nn
 
+import pytorch_lightning as pl
+from pytorch_lightning.loggers import WandbLogger
+import wandb
+
+from kirigami.data import DataModule
+from kirigami.qrna import QRNANet
+from kirigami.spot import ResNet
+from kirigami.fork import Fork
+from kirigami.loss import ForkLoss
+from kirigami.learner import KirigamiModule
+
+
 
 def main():
-    if len(sys.argv) == 2:
-        out_file = sys.argv[1] + ".pt"
-    else:
-        out_file = None
+    bins = torch.arange(2, 21, .5)
+    main_net = ResNet(n_blocks=32, in_channels=9, n_channels=32)
+    fork = Fork(n_channels=32, n_bins=len(bins), kernel_size=5)
+    net = nn.Sequential(main_net, fork)
 
-    dist_idxs = [0]
-    # dist_idxs = list(range(10)) 
-    bins = "torch.arange(2,21,.5)"
+    crit = ForkLoss(pos_weight=.9, con_weight=1, inv_weight=0.0, bin_weight=0.0)
 
-    train(notes=None,
-          data=dict(tr_set="scripts/TR1234.pt",
-                    vl_set="scripts/VL128.pt",
-                    ceiling=80, 
-                    multiclass=True,
-                    bins=bins,
-                    use_thermo=True,
-                    use_dist=True,
-                    inv=False,
-                    dist_idxs=dist_idxs,
-                    inv_eps=1e-8,
-                    batch_size=1,
-                    batch_sample=True),
-          criterion=("loss.ForkLoss(dist_crit=loss.CEMulti(),"
-                                   "pos_weight=.90,"
-                                   "inv_weight=.00,"
-                                   "bin_weight=.10,"
-                                   "dropout=False)"),
-          resume=False,
-          eval_freq=1,
-          bar=False,
-          out_file=out_file,
-          save_epoch=1000,
-          tr_chk=None,
-          vl_chk=None,
-          device="cuda",
-          layers=["kirigami.nn.ResNet(in_channels=9,act='ReLU',n_blocks=4,p=0.2,n_channels=32)",
-                  f"kirigami.nn.Fork(in_channels=32,out_dists={len(dist_idxs)},multiclass=True,n_bins={len(eval(bins))},kernel_size=3)",
-                  "kirigami.nn.Symmetrize()"],
-          optimizer="torch.optim.Adam",
-          lr=0.001,
-          epochs=2000, 
-          iter_acc=1,
-          mix_prec=False,
-          chkpt_seg=4,
-          symmetrize=True,
-          canonicalize=True,
-          thres_by_ground_pairs=True,
-          thres_prob=0.0)
+    train_dataset = torch.load("data/SPOT-TR1.pt")
+    val_dataset = torch.load("data/SPOT-VL1.pt")
+    data_mod = DataModule(train_dataset, val_dataset, bins)
+
+    learner = KirigamiModule(net, crit)
+    wandb_logger = WandbLogger(project="test-project")
+    wandb_logger.experiment.log_code(".")
+    trainer = pl.Trainer(max_epochs=1000, logger=wandb_logger, auto_lr_find=True, accelerator="auto", accumulate_grad_batches=32)
+    trainer.fit(learner, data_mod)
+    
 
 if __name__ == "__main__":
     main()

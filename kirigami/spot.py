@@ -19,9 +19,9 @@ class ActNormDrop(nn.Module):
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
         out = ipt
         out = self.act(out)
-        if self.training:
-            out = self.norm(out)
-            out = self.drop(out)
+        # if self.training:
+        out = self.norm(out)
+        out = self.drop(out)
         return out
 
 

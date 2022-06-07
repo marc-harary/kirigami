@@ -48,5 +48,10 @@ class Fork(nn.Module):
         opt["con"] = (opt["con"] + opt["con"].transpose(-1, -2)) / 2
         for dist_type in self.dist_types:
             head = getattr(self, dist_type)
-            opt["dists"][dist_type] = head(ipt)
+        opt["dists"][dist_type] = head(ipt)
         return opt
+
+    # def forward(self, ipt):
+    #     opt = self.con_conv(ipt).sigmoid()
+    #     opt = (opt + opt.transpose(-1, -2)) / 2
+    #     return opt

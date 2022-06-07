@@ -16,8 +16,9 @@ class KirigamiModule(pl.LightningModule):
         super().__init__()
         self.net = net
         self.crit = crit
-        # self.val_metrics = {}
         self.mcc = GroundMCC()
+
+        # self.val_metrics = {}
         # self.val_metrics["con"] = torchmetrics.MatthewsCorrCoef(num_classes=2)
         # self.val_metrics["dists"] = {}
         # for dist_type in self.dist_types:
@@ -35,14 +36,8 @@ class KirigamiModule(pl.LightningModule):
         feat, lab_grd = batch
         lab_prd = self.net(feat)
         loss_dict = self.crit(lab_prd, lab_grd)
-        self.log("train_tot_loss",
-                 loss_dict["tot"],
-                 on_epoch=True,
-                 logger=True)
-        self.log("train_con_loss",
-                 loss_dict["con"],
-                 on_epoch=True,
-                 logger=True)
+        self.log("train_tot_loss", loss_dict["tot"], on_epoch=True, logger=True, batch_size=True)
+        self.log("train_con_loss", loss_dict["con"], on_epoch=True, logger=True, batch_size=True)
         return loss_dict["tot"]
 
 
@@ -51,10 +46,11 @@ class KirigamiModule(pl.LightningModule):
         lab_prd = self.net(feat)
         loss_dict = self.crit(lab_prd, lab_grd)
         self.mcc(lab_prd, lab_grd, feat)
-        self.log("val_tot_loss", loss_dict["tot"], on_epoch=True, logger=True)
-        self.log("val_con_loss", loss_dict["con"], on_epoch=True, logger=True)
-        self.log("val_mcc", self.mcc, on_epoch=True, logger=True)
-        self.logger.log_image(key=f"mol{batch_idx:02}", images=[lab_grd["con"].squeeze(), lab_prd["con"].squeeze()])
+        self.log("val_tot_loss", loss_dict["tot"], on_epoch=True, logger=True, batch_size=True)
+        self.log("val_con_loss", loss_dict["con"], on_epoch=True, logger=True, batch_size=True)
+        self.log("val_mcc", self.mcc, on_epoch=True, logger=True, batch_size=True)
+        # self.logger.log_image(key=f"mol{batch_idx:02}", images=[lab_grd["con"].squeeze(), lab_prd["con"].squeeze()])
+        # self.logger.log_image(key=f"mol{batch_idx:02}", images=[lab_grd["con"].squeeze(), lab_prd["con"].squeeze()])
         return loss_dict["tot"]
 
 

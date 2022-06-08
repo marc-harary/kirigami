@@ -13,10 +13,9 @@ from kirigami.loss import ForkLoss
 from kirigami.learner import KirigamiModule
 
 
-
 def main():
     bins = torch.arange(2, 21, .5)
-    main_net = ResNet(n_blocks=32, in_channels=9, n_channels=32)
+    main_net = ResNet(n_blocks=64, in_channels=9, n_channels=32)
     fork = Fork(n_channels=32, n_bins=len(bins), kernel_size=5)
     net = nn.Sequential(main_net, fork)
 
@@ -27,7 +26,7 @@ def main():
     data_mod = DataModule(train_dataset, val_dataset, bins)
 
     learner = KirigamiModule(net, crit)
-    wandb_logger = WandbLogger(project="test-project")
+    wandb_logger = WandbLogger(project="kirigami")
     wandb_logger.experiment.log_code(".")
     trainer = pl.Trainer(max_epochs=1000, logger=wandb_logger, auto_lr_find=True, accelerator="auto", accumulate_grad_batches=32)
     trainer.fit(learner, data_mod)

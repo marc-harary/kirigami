@@ -14,10 +14,12 @@ class DataModule(pl.LightningDataModule):
                  train_dataset,
                  val_dataset,
                  bins: torch.Tensor,
+                 test_dataset = None,
                  inv_eps: float = 1e-8):
         super().__init__()
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
+        self.test_dataset = test_dataset
         self.bins = bins
         self.inv_eps = inv_eps
 
@@ -28,6 +30,10 @@ class DataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         return DataLoader(self.val_dataset, collate_fn=self._collate_fn, shuffle=False, batch_size=1)
+
+
+    def test_dataloader(self):
+        return DataLoader(self.test_dataset, collate_fn=self._collate_fn, shuffle=False, batch_size=1)
 
 
     def _concat(self, fasta):

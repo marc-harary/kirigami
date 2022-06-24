@@ -15,6 +15,7 @@ class ActNormDrop(nn.Module):
         self.act = nn.ELU()
         self.norm = nn.InstanceNorm2d(num_features=num_features)
         self.drop = nn.Dropout2d(p=p)
+        # self.drop = nn.Dropout(p=p)
 
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
         out = ipt

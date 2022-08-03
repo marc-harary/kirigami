@@ -66,17 +66,28 @@ class DataModule(pl.LightningDataModule):
 
 
     def _collate_fn(self, batch):
-        seq_, pet_, dssr_, dists_ = batch[0] 
+        batch_ = []
+        for tens in batch[0]:
+            if tens.is_sparse:
+                batch_.append(tens.to_dense())
+            else:
+                batch_.append(tens)
+        # seq_, rnafold_, pet_, pp_, dssr_, dists_ = batch_
+        seq_, pet_, pp_, dssr_, dists_ = batch_
         # create feature tensor
-        seq = self._concat(seq_.to_dense()).unsqueeze(0)
+        seq = self._concat(seq_).unsqueeze(0)
         try:
-            pet = pet_.to_dense().unsqueeze(0).unsqueeze(0)
+            pet = pet_.unsqueeze(0).unsqueeze(0)
         except: # error handling accounts for what's probably a PyTorch bug
             pet = torch.zeros(1, 1, seq.shape[-1], seq.shape[-1])
-        feat = torch.cat((seq, pet), 1).float()
+        # rnafold = rnafold_.unsqueeze(0).unsqueeze(0)
+        # pp = pp_.unsqueeze(0).unsqueeze(0)
+        pp = pp_.unsqueeze(0).unsqueeze(0)
+        # feat = torch.cat((seq, pet, pp), 1).float()
+        feat = torch.cat((seq, pet, pp), 1).float()
         # create label dictionary
         lab = {}
-        lab["con"] = dssr_.to_dense().float()
+        lab["con"] = dssr_.float()
         # zero out diagonal
         diag = torch.arange(seq.shape[-1])
         lab["con"][..., diag, diag] = torch.nan

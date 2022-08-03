@@ -99,6 +99,7 @@ class ForkLoss(nn.Module):
 
         tot_loss = self.con_weight * con_loss
 
+
         for ((key, prd_val), (_, grd_val)) in zip(prd["dists"].items(), grd["dists"].items()):
             loss_dict[key] = {}
             # bin loss

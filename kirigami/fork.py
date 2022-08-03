@@ -3,6 +3,91 @@ import torch.nn as nn
 from collections import namedtuple
 
 
+MIN_DIST = 4
+
+
+# def build_table(con_map):
+#     # L = len(seq)
+#     L = len(con_map)
+#     memo = torch.zeros(L, L, device=con_map.device)
+#     for k in range(1, L):
+#         for i in range(L - k):
+#             j = i + k
+#             if j - i < MIN_DIST:
+#                 continue
+#             unpairi = memo[i+1, j]
+#             unpairj = memo[i, j-1]
+#             pairij = memo[i+1, j-1] + con_map[i, j]
+#             bifurc = 0
+#             for l in range(i, j):
+#                 bifurc = max(bifurc, memo[i, l] + memo[l+1, j])
+#             memo[i, j] = max(unpairi, unpairj, pairij, bifurc)
+#     return memo
+# 
+# 
+# def trace_table(memo, con_map, pairs = None, i = None, j = None):
+#     if pairs is None:
+#         pairs = []
+#         # for i in range(len(con_map)):
+#         #     pairs[i] = -1
+#         return trace_table(memo, con_map, pairs, 0, len(con_map) - 1)
+#     elif i >= j:
+#         return pairs
+#     elif memo[i, j] == memo[i+1, j]:
+#         return trace_table(memo, con_map, pairs, i+1, j)
+#     elif memo[i, j] == memo[i, j-1]:
+#         return trace_table(memo, con_map, pairs, i, j-1)
+#     elif memo[i, j] == memo[i+1, j-1] + con_map[i, j]: # canon(seq[i] + seq[j]):
+#         pairs.append((i, j))
+#         return trace_table(memo, con_map, pairs, i+1, j-1)
+#     else:
+#         for k in range(i+1, j-1):
+#             if memo[i, j] == memo[i, k] + memo[k+1, j]:
+#                 trace_table(memo, con_map, pairs, i, k)
+#                 trace_table(memo, con_map, pairs, k+1, j)
+#                 break
+#     return pairs
+# 
+# 
+# class PostProcess(nn.Module):
+#     def __init__(self):
+#         super().__init__()
+#         self._bases = torch.Tensor([2, 3, 5, 7])
+#         self._pairs = {14, 15, 35}
+#         self._min_dist = 4
+#         
+# 
+#     def forward(self, con, feat, ground_truth=torch.inf):
+#         # remove sharp angles
+#         con_ = con.squeeze()
+#         # con_ = con_.triu(self._min_dist+1) + con_.tril(-(self._min_dist+1))
+#         con_ = con_.triu(self._min_dist + 1)
+#         L = len(con_)
+#         
+#         if not self.training:
+#             # canonicalize
+#             seq = feat.squeeze()[:len(self._bases),:,0]
+#             pairs = self._bases.to(seq.device)[seq.argmax(0)]
+#             pair_mat = pairs.outer(pairs)
+#             pair_mask = torch.zeros(con_.shape, dtype=bool, device=con_.device)
+#             for pair in self._pairs:
+#                 pair_mask = torch.logical_or(pair_mask, pair_mat == pair)
+#             con_[~pair_mask] = 0.
+#         
+#         if not self.training:
+#             memo = build_table(con_)
+#             pairs = trace_table(memo, con_)
+#             mask = torch.zeros(L, L, dtype=bool, device=con.device)
+#             for i, j in pairs:
+#                 mask[i, j] = mask[j, i] = True
+#             con_[~mask] = 0.
+#             
+#         con_ = con_ + con_.transpose(-2, -1)
+#         con_ = con_.reshape_as(con)
+# 
+#         return con_
+
+
 class PostProcess(nn.Module):
     def __init__(self):
         super().__init__()
@@ -14,20 +99,21 @@ class PostProcess(nn.Module):
     def forward(self, con, feat, ground_truth=torch.inf):
         # remove sharp angles
         con_ = con.squeeze()
-        # con_ = con_.triu(self._min_dist+1) + con_.tril(-(self._min_dist+1))
+        con_ = (con_ + con_.transpose(-2, -1)) / 2
         con_ = con_.triu(self._min_dist + 1)
+        con_ = (con_ + con_.transpose(-2, -1)) / 2
         L = len(con_)
         
-        # canonicalize
-        seq = feat.squeeze()[:len(self._bases),:,0]
-        pairs = self._bases.to(seq.device)[seq.argmax(0)]
-        pair_mat = pairs.outer(pairs)
-        pair_mask = torch.zeros(con_.shape, dtype=bool, device=con_.device)
-        for pair in self._pairs:
-            pair_mask = torch.logical_or(pair_mask, pair_mat == pair)
-        con_[~pair_mask] = 0.
-
         if not self.training:
+            # canonicalize
+            seq = feat.squeeze()[:len(self._bases),:,0]
+            pairs = self._bases.to(seq.device)[seq.argmax(0)]
+            pair_mat = pairs.outer(pairs)
+            pair_mask = torch.zeros(con_.shape, dtype=bool, device=con_.device)
+            for pair in self._pairs:
+                pair_mask = torch.logical_or(pair_mask, pair_mat == pair)
+            con_[~pair_mask] = 0.
+
             # filter for maximum one pair per base
             con_flat = con_.flatten()
             idxs = con_flat.argsort(descending=True)
@@ -38,7 +124,7 @@ class PostProcess(nn.Module):
             one_mask = torch.zeros(L, L, dtype=bool)
             num_pairs = 0
             for i, j in zip(ii, jj):
-                if num_pairs > ground_truth:
+                if num_pairs == ground_truth:
                     break
                 if memo[i] or memo[j]:
                     continue
@@ -47,10 +133,10 @@ class PostProcess(nn.Module):
                 num_pairs += 1
             con_[~one_mask] = 0.
 
-        con_ = con_ + con_.transpose(-2, -1)
         con_ = con_.reshape_as(con)
 
         return con_
+
 
 
 class ForkHead(nn.Module):

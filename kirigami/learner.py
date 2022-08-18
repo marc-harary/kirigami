@@ -3,6 +3,7 @@ import torch.nn as nn
 from torch import optim
 import torch.nn.functional as F
 import pytorch_lightning as pl
+from torch.utils.checkpoint import checkpoint_sequential
 
 import torchmetrics
 from torchmetrics.functional import matthews_corrcoef
@@ -13,8 +14,12 @@ from tqdm import tqdm
 
 from kirigami.spot import ResNetBlock
 from kirigami.qrna import QRNABlock
-from kirigami.fork import Fork, PostProcess
+from kirigami.fork import Fork
+from kirigami.post import Greedy, Dynamic, Symmetrize, RemoveSharp
 from kirigami.utils import mat2db
+from kirigami.transformer import AttentionBlock
+from kirigami.loss import ForkLoss
+
 
 
 class KirigamiModule(pl.LightningModule):
@@ -26,49 +31,80 @@ class KirigamiModule(pl.LightningModule):
                  n_blocks: int,
                  n_channels: int,
                  p: float,
-                 use_spot: bool,
-                 crit: nn.Module,
+                 feats: list, 
+                 dists: list,
                  bins: torch.Tensor,
-                 cutoffs: torch.Tensor):
+                 cutoffs: torch.Tensor,
+                 pos_weight: float,
+                 con_weight: float,
+                 inv_weight: float,
+                 bin_weight: float,
+                 arch: str = "QRNA",
+                 norm: str = "InstanceNorm2D",
+                 chunks: int = 4,
+                 post_proc: str = "greedy"):
         super().__init__()
-        self.crit = crit
-        self.mcc = torchmetrics.MatthewsCorrCoef(num_classes=2, threshold=.5)
-        # self.mcc = torchmetrics.MatthewsCorrCoef(num_classes=2, threshold=1e-4)
+        self.crit = ForkLoss(pos_weight=pos_weight,
+                             con_weight=con_weight,
+                             inv_weight=inv_weight,
+                             bin_weight=bin_weight,
+                             dists=dists)
+        # self.mcc = torchmetrics.MatthewsCorrCoef(num_classes=2, threshold=.5)
+        # self.val_mcc = torchmetrics.MatthewsCorrCoef(num_classes=2, threshold=1e-4)
+        self.val_mcc = torchmetrics.MatthewsCorrCoef(num_classes=2)
         self.val_f1 = F1Score(threshold=1e-4)
         self.test_mcc = MatthewsCorrCoef(num_classes=2)
-        self.test_f1 = F1Score(threshold=1e-4)
+        self.test_f1 = F1Score(threshold=.5)
         self.cutoffs = cutoffs
         self.n_blocks = n_blocks
+        self.chunks = chunks
+        self.dists = dists
 
-        conv_init = torch.nn.Conv2d(in_channels=10,
-        # conv_init = torch.nn.Conv2d(in_channels=10,
+        conv_init = torch.nn.Conv2d(in_channels=len(feats) + 8,
                                     out_channels=n_channels,
                                     kernel_size=3,
                                     padding=1)
 
         dilations = 2 * n_blocks * [1]
         blocks = []
-        if use_spot:
+        if arch == "SPOT":
             for i in range(n_blocks):
                 block = ResNetBlock(p=p,
                                     dilations=dilations[2*i:2*(i+1)],
                                     kernel_sizes=(3,5),
                                     n_channels=n_channels)
                 blocks.append(block)
-        else:
+                # blocks.append(Symmetrize())
+                # blocks.append(RemoveSharp())
+        elif arch == "QRNA":
             for i in range(n_blocks):
                 block = QRNABlock(p=p,
                                   dilations=dilations[2*i:2*(i+1)],
                                   kernel_sizes=(3,5),
                                   n_channels=n_channels,
+                                  norm=norm,
                                   resnet=True)
                 blocks.append(block)
-        fork = Fork(n_channels=n_channels, n_bins=len(bins), kernel_size=5)
+                # blocks.append(Symmetrize())
+                # blocks.append(RemoveSharp())
+        elif arch == "transformer":
+            for i in range(n_blocks):
+                block = AttentionBlock(dropout=p,
+                                       embed_dim=n_channels,
+                                       hidden_dim=n_channels,
+                                       num_heads=8)
+                blocks.append(block)
+        fork = Fork(n_channels=n_channels, n_bins=len(bins), kernel_size=5, dists=dists)
         self.model = torch.nn.Sequential(*[conv_init, *blocks, fork])
-        self.post_proc = PostProcess()
+        if post_proc == "greedy":
+            self.post_proc = Greedy()
+        else:
+            self.post_proc = Dynamic()
 
         self.test_rows = []
         self.test_vals = []
+
+        self.save_hyperparameters()
         
         # self.val_metrics = {}
         # self.val_metrics["con"] = torchmetrics.MatthewsCorrCoef(num_classes=2)
@@ -88,13 +124,14 @@ class KirigamiModule(pl.LightningModule):
         feat, lab_grd = batch
 
         lab_prd = self.model(feat)
-        # lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
-        loss_dict = self.crit(lab_prd, lab_grd)
+        # lab_prd = checkpoint_sequential(self.model, self.chunks, feat)
+        lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
+        loss_dict = self.crit(lab_prd, lab_grd, add_sigmoid=True)
 
         self.log("train_tot_loss", loss_dict["tot"], on_epoch=True, logger=True, batch_size=True)
         self.log("train_con_loss", loss_dict["con"], on_epoch=True, logger=True, batch_size=True)
-        for dist in self.dist_types:
-            self.log(f"train_{dist}_loss", loss_dict[dist]["bin"], on_epoch=True, logger=True, batch_size=True)
+        # for dist in self.dist_types:
+        #     self.log(f"train_{dist}_loss", loss_dict[dist]["bin"], on_epoch=True, logger=True, batch_size=True)
 
         return loss_dict["tot"]
 
@@ -106,16 +143,16 @@ class KirigamiModule(pl.LightningModule):
         lab_prd["con"] = self.post_proc(lab_prd["con"], feat, torch.sum(lab_grd["con"] > 0).item() / 2)
         # lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
 
-        loss_dict = self.crit(lab_prd, lab_grd)
-        self.mcc(lab_prd["con"], lab_grd["con"].int())
+        loss_dict = self.crit(lab_prd, lab_grd, add_sigmoid=False)
+        self.val_mcc(lab_prd["con"], lab_grd["con"].int())
         self.val_f1(lab_prd["con"].flatten(), lab_grd["con"].int().flatten())
 
         self.log("val_tot_loss", loss_dict["tot"], on_epoch=True, logger=True, batch_size=True)
         self.log("val_con_loss", loss_dict["con"], on_epoch=True, logger=True, batch_size=True)
-        self.log("val_mcc", self.mcc, on_epoch=True, logger=True, batch_size=True)
+        self.log("val_mcc", self.val_mcc, on_epoch=True, logger=True, batch_size=True)
         self.log("val_f1", self.val_f1, on_epoch=True, logger=True, batch_size=True)
-        for dist in self.dist_types:
-            self.log(f"val_{dist}_loss", loss_dict[dist]["bin"], on_epoch=True, logger=True, batch_size=True)
+        # for dist in self.dist_types:
+        #     self.log(f"val_{dist}_loss", loss_dict[dist]["bin"], on_epoch=True, logger=True, batch_size=True)
         # self.logger.log_image(key=f"mol{batch_idx:02}", images=[lab_grd["con"].squeeze(), lab_prd["con"].squeeze()])
         # self.logger.log_image(key=f"mol{batch_idx:02}", images=[lab_grd["con"].squeeze(), lab_prd["con"].squeeze()])
 
@@ -167,9 +204,9 @@ class KirigamiModule(pl.LightningModule):
         lab_prd = self.model(feat)
         lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
 
-        loss_dict = self.crit(lab_prd, lab_grd)
+        loss_dict = self.crit(lab_prd, lab_grd, add_sigmoid=False)
         # test_mcc = self.test_mcc(lab_prd["con"].triu(), lab_grd["con"].int().triu())
-        test_mcc = self.mcc(lab_prd["con"], lab_grd["con"].int())
+        test_mcc = self.test_mcc(lab_prd["con"], lab_grd["con"].int())
         test_f1 = self.test_f1(lab_prd["con"].flatten(), lab_grd["con"].int().flatten())
 
         self.log("test_tot_loss", loss_dict["tot"], on_epoch=True, logger=True, batch_size=True)
@@ -198,3 +235,4 @@ class KirigamiModule(pl.LightningModule):
         prd_vec = prd_vec[~grd_vec.isnan()]
         grd_vec = grd_vec[~grd_vec.isnan()]
         return prd_vec, grd_vec
+

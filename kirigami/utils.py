@@ -9,12 +9,17 @@ import torch
 import matplotlib.pyplot as plt
 from matplotlib import patches
 
+import pyximport
+# pyximport.install(setup_args=dict(include_dirs=np.get_include()))
+# import nussinov
+
 
 ROOT = os.path.dirname(__file__)
 EXE = os.path.join(ROOT, "PETfold")
 os.environ["PETFOLDBIN"] = ROOT
 
 SPOT_EXE = "/home/mah258/SPOT-RNA/SPOT-RNA.py"
+PROB_PAIRS_EXE = "/home/mah258/CSSR/exe/ProbablePairRR"
 
 PSEUDO_LEFT = "({[<" + string.ascii_uppercase
 PSEUDO_RIGHT = ")}]>" + string.ascii_lowercase
@@ -177,8 +182,8 @@ def run_pet(fasta, suboptimal=0, ppfile=False, ppfold=False, return_dbn=False):
     command = [EXE, "--verbose", "-f", tmp_fasta]
     if ppfile:
         command.extend(["--ppfile", tmp_pfile])
-    if ppfold:
-        command.append("--ppfold")
+    # if ppfold:
+    #     command.append("--ppfold")
     if suboptimal > 0:
         command.extend(["--suboptimal", str(suboptimal)])
     output = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -280,3 +285,23 @@ def plot_dbn(struct, seq, ax = None, size=1):
     ax.set(aspect=1.0)
     ax.axis("off")
     return ax
+
+
+def run_prob_pair(seq):
+    tmp_fasta = "/tmp/prob.fasta"
+    tmp_ct = "/tmp/prob.ct"
+    with open(tmp_fasta, "w") as f: 
+        f.write(f">tmp\n{seq}\n")
+    # build command
+    command = [PROB_PAIRS_EXE, "--sequence", tmp_fasta, tmp_ct]
+    res = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    ct_mat = torch.from_numpy(np.loadtxt(tmp_ct))
+    out = torch.zeros(len(seq), len(seq))
+    if len(ct_mat) > 0:
+        ii = ct_mat[:,0].long() - 1
+        jj = ct_mat[:,1].long() - 1
+        probs = ct_mat[:,-1].float()
+        out[ii, jj] = out[jj, ii] = probs
+
+    return out

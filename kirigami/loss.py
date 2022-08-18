@@ -69,7 +69,7 @@ class ForkLoss(nn.Module):
                  con_weight: float,
                  bin_weight: float,
                  inv_weight: float,
-                 n_dists: int = 10):
+                 dists = None):
         super().__init__()
         # assert 0.0 <= dist_weight <= 1.0
         assert (con_weight + bin_weight + inv_weight) == 1.
@@ -78,27 +78,31 @@ class ForkLoss(nn.Module):
         self.con_weight = con_weight
         self.bin_weight = bin_weight
         self.inv_weight = inv_weight
+        self.dists = [] if dists is None else dists
 
-
-    def forward(self, prd: dict, grd: dict):
-
+    def forward(self, prd: dict, grd: dict, add_sigmoid: bool = True):
         loss_dict = {}
 
         # contact loss
-        grd_con_ = grd["con"].reshape_as(prd["con"])
-        prd["con"][grd_con_.isnan()] = 0
-        grd_con_[grd_con_.isnan()] = 0
+        grd_con_ = grd["con"].clone()
+        grd_con_ = grd_con_.reshape_as(prd["con"])
+        mask = grd_con_.isnan()
+        # zero out nan's so BCE loss doesn't throw error
+        grd_con_[mask] = 0.
         # prd["con"][..., grd["con"].isnan()] = 0
         # grd["con"][..., grd["con"].isnan()] = 0
 
+        # if add_sigmoid:
+        #     con_loss_tens = F.binary_cross_entropy_with_logits(prd["con"], grd_con_, reduction="none")
+        # else:
+        #     con_loss_tens = F.binary_cross_entropy(prd["con"], grd_con_, reduction="none")
         con_loss_tens = F.binary_cross_entropy(prd["con"], grd_con_, reduction="none")
         con_loss_tens[grd_con_ == 1] *= self.pos_weight
         con_loss_tens[grd_con_ == 0] *= 1 - self.pos_weight
-        con_loss = con_loss_tens.mean()
+        con_loss = con_loss_tens[~mask].mean()
         loss_dict["con"] = con_loss
 
         tot_loss = self.con_weight * con_loss
-
 
         for ((key, prd_val), (_, grd_val)) in zip(prd["dists"].items(), grd["dists"].items()):
             loss_dict[key] = {}
@@ -117,3 +121,4 @@ class ForkLoss(nn.Module):
         loss_dict["tot"] = tot_loss 
 
         return loss_dict
+        

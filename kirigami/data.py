@@ -28,16 +28,6 @@ class DataModule(pl.LightningDataModule):
         self.inv_eps = inv_eps
         self.feats = feats if feats is not None else []
         self.dists = dists
-
-        # vec_lengths = np.array([int(row["seq"].shape[1]) for row in train_dataset])
-        # lengths = set(vec_lengths)
-        # self.train_idxs = []
-        # for length in lengths:
-        #     idxs = np.argwhere(vec_lengths == length)
-        #     self.train_idxs.append(idxs.flatten().tolist())
-
-        # self.val_idxs = list(range(len(val_dataset))) if val_dataset else None
-        # self.test_idxs = list(range(len(test_dataset))) if test_dataset else None
         
         self.batch_size = batch_size
 
@@ -141,7 +131,6 @@ class DataModule(pl.LightningDataModule):
             lab["dists"][dist_type]["inv"][:, :,  ]= pad(lab["dists"][dist_type]["inv"])
             lab["dists"][dist_type]["inv"][dist <= 0] = torch.nan
             lab["dists"][dist_type]["bin"] = self._one_hot_bin(dist)
-            # lab["dists"][dist_type]["bin"] = pad(self._one_hot_bin(dist))
             lab["dists"][dist_type]["bin"][:, :, dist_ <= 0] = torch.nan
             lab["dists"][dist_type]["bin"] = pad(lab["dists"][dist_type]["bin"])
 
@@ -173,29 +162,6 @@ class DataModule(pl.LightningDataModule):
                 lab["con"][i, :, start:end, start:end] = row["dssr"]
         diag = torch.arange(max_L)
         lab["con"][..., diag, diag] = torch.nan
-
-        # if self.dists is not None:
-        #     for dist_type in self.dist_types:
-        #         lab["dists"][dist_type] = {}
-        #         lab["dists"][dist_type]["raw"] = torch.full((b_size, 1, max_L, max_L), torch.nan)
-        #         lab["dists"][dist_type]["inv"] = torch.full((b_size, 1, max_L, max_L), torch.nan)
-        #         lab["dists"][dist_type]["bin"] = torch.full((b_size, self.bins.numel(), max_L, max_L), torch.nan)
-
-        #     for i, row in enumerate(batch):
-        #         L = row["seq"].shape[-1]
-        #         diff = (max_L - L) / 2
-        #         start, end = floor(diff), floor(diff) + L
-        #         for j, dist_type in enumerate(self.dist_types):
-        #             dist = row["dists"][j, ...]
-        #             if dist.is_sparse:
-        #                 dist = dist.to_dense()
-        #             dist[dist < 0] = torch.nan
-        #             lab["dists"][dist_type]["raw"][i, 0, start:end, start:end] = dist
-
-        #     for dist_type in self.dist_types:
-        #         dist = lab["dists"][dist_type]["raw"]
-        #         lab["dists"][dist_type]["bin"] = self._one_hot_bin(dist)
-        #         lab["dists"][dist_type]["inv"] = 1 / (dist + self.inv_eps)
 
         for dist in self.dists:
             lab["dists"][dist] = {}

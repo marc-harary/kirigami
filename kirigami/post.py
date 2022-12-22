@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
+import networkx as nx
 
 import pyximport
 pyximport.install(setup_args=dict(include_dirs=np.get_include()))
@@ -107,3 +108,41 @@ class Dynamic(nn.Module):
         con_ *= pair_mask
 
         return con_.reshape_as(con)
+
+
+class Blossom(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self._bases = torch.Tensor([2, 3, 5, 7])
+        self._pairs = {14, 15, 35}
+        self._min_dist = 4
+        self.symmetrize = Symmetrize()
+        self.remove_sharp = RemoveSharp()
+        self.canonicalize = Canonicalize()
+        
+    def forward(self, con, feat, ground_truth=torch.inf):
+        if self.training:
+            return self.symmetrize(con)
+        
+        con = self.symmetrize(con)
+        con = self.remove_sharp(con)
+        con = self.canonicalize(con, feat)
+        con_ = con.squeeze()
+        con_ = con_.cpu()
+
+        G = nx.Graph()
+        edges = []
+        for i in range(con_.shape[0]):
+            for j in range(con_.shape[1]):
+                edges.append((i, j, con_[i, j]))
+        G.add_weighted_edges_from(edges)
+        edges_match = torch.tensor(list(nx.max_weight_matching(G)))
+        mask = torch.zeros_like(con_, dtype=bool)
+        mask[edges_match[:, 0], edges_match[:, 1]] = True
+        mask[edges_match[:, 1], edges_match[:, 0]] = True
+        con_[~mask] = 0.
+        con_ = con_.to(con.device)
+        con_ = con_.reshape_as(con)
+
+        return con_
+

@@ -66,20 +66,6 @@ class KirigamiModule(pl.LightningModule):
         # self.metrics_thres = torch.tensor([0.2, 0.4, 0.6, 0.8])
         self.metrics_thres = torch.linspace(0, 1, 10)
 
-        """
-        for thres in self.metrics_thres:
-            thres = thres.item()
-            thres_str = int(thres * 100)
-            setattr(self, f"val_proc_mcc_{thres_str:d}", MatthewsCorrCoef(num_classes=2, threshold=thres, task="binary"))
-            setattr(self, f"val_proc_f1_{thres_str:d}", F1Score(threshold=thres, task="binary"))
-            setattr(self, f"val_proc_prec_{thres_str:d}", Precision(task="binary", threshold=thres))
-            setattr(self, f"val_proc_rec_{thres_str:d}", Recall(task="binary", threshold=thres))
-            setattr(self, f"val_raw_mcc_{thres_str:d}", MatthewsCorrCoef(num_classes=2, threshold=thres, task="binary"))
-            setattr(self, f"val_raw_f1_{thres_str:d}", F1Score(threshold=thres, task="binary"))
-            setattr(self, f"val_raw_prec_{thres_str:d}",  Precision(task="binary", threshold=thres))
-            setattr(self, f"val_raw_rec_{thres_str:d}", Recall(task="binary", threshold=thres))
-        """
-
         setattr(self, f"test_mcc", MatthewsCorrCoef(num_classes=2, threshold=0.5, task="binary"))
         setattr(self, f"test_f1", F1Score(threshold=0.5, task="binary"))
 
@@ -140,24 +126,6 @@ class KirigamiModule(pl.LightningModule):
 
         self.transfer = transfer
         self.save_hyperparameters()
-        
-        # self.val_metrics = {}
-        # self.val_metrics["con"] = torchmetrics.MatthewsCorrCoef(num_classes=2)
-        # self.val_metrics["dists"] = {}
-        # for dist_type in self.dist_types:
-        #     self.val_metrics["dists"][dist_type] = {}
-        #     self.val_metrics["dists"][dist_type]["bin"] = {}
-        #     self.val_metrics["dists"][dist_type]["inv"] = {}
-        #     for i in self.Ls:
-        #         self.val_metrics["dists"][dist_type]["bin"][f"pcc{i}"] = torchmetrics.PearsonCorrCoef()
-        #         self.val_metrics["dists"][dist_type]["bin"][f"mae{i}"] = torchmetrics.PearsonCorrCoef()
-        #         self.val_metrics["dists"][dist_type]["inv"][f"pcc{i}"] = torchmetrics.MeanAbsoluteError()
-        #         self.val_metrics["dists"][dist_type]["inv"][f"mae{i}"] = torchmetrics.MeanAbsoluteError()
-        # for dist in dists:
-        #     setattr(self, f"{dist}_pearson", torchmetrics.PearsonCorrCoef())
-        #     setattr(self, f"{dist}_mae", torchmetrics.MeanAbsoluteError())
-        #     # self.val_metrics["dists"][dist_type]["bin"][f"pcc{i}"] = torchmetrics.PearsonCorrCoef()
-        #     # self.val_metrics["dists"][dist_type]["bin"][f"mae{i}"] = torchmetrics.PearsonCorrCoef()
 
 
     def _get_mids(self):
@@ -237,31 +205,15 @@ class KirigamiModule(pl.LightningModule):
         mask = ~lab_grd["con"].isnan()
         prd_raw = raw_con[mask]
         grd = lab_grd["con"].int()[mask]
-        # self.val_raw_mcc(prd_raw, grd)
-        # self.val_raw_f1(prd_raw, grd)
-        # self.val_raw_rec(prd_raw, grd)
-        # self.val_raw_prec(prd_raw, grd)
 
         lab_prd["con"] = self.post_proc(lab_prd["con"], feat)#, torch.sum(lab_grd["con"] > 0).item() / 2)
         loss_dict = self.crit(lab_prd, lab_grd)
         prd_proc = lab_prd["con"][mask]
-        # self.val_proc_mcc(proc_prd, grd)
-        # self.val_proc_f1(proc_prd, grd)
-        # self.val_proc_rec(proc_prd, grd)
-        # self.val_proc_prec(proc_prd, grd)
 
         prefix = "transfer" if self.transfer else "pre"
 
         self.log(f"{prefix}/val/tot_loss", loss_dict["tot"], logger=True, batch_size=True)
         self.log(f"{prefix}/val/con_loss", loss_dict["con"], logger=True, batch_size=True)
-        # self.log(f"{prefix}/val/raw/f1", self.val_raw_f1, logger=True, batch_size=True)
-        # self.log(f"{prefix}/val/raw/mcc", self.val_raw_mcc, logger=True, batch_size=True)
-        # self.log(f"{prefix}/val/raw/prec", self.val_raw_prec, logger=True, batch_size=True)
-        # self.log(f"{prefix}/val/raw/rec", self.val_raw_rec, logger=True, batch_size=True)
-        # self.log(f"{prefix}/val/proc/f1", self.val_proc_f1, logger=True, batch_size=True)
-        # self.log(f"{prefix}/val/proc/mcc", self.val_proc_mcc, logger=True, batch_size=True, prog_bar=True)
-        # self.log(f"{prefix}/val/proc/prec", self.val_proc_prec, logger=True, batch_size=True)
-        # self.log(f"{prefix}/val/proc/rec", self.val_proc_rec, logger=True, batch_size=True)
 
         mcc_procs = []
         f1_procs = []
@@ -382,22 +334,11 @@ class KirigamiModule(pl.LightningModule):
         lab_prd["con"][lab_prd["con"] < self.test_mcc.threshold] = 0
         dbn = mat2db(lab_prd["con"])
         self.test_rows.append((dbn, test_mcc.item(), test_f1.item()))
-        # self.test_vals.append((con_, lab_prd["con"] > self.cutoff, lab_grd["con"], feat))
-        # self.log("test_mcc", mcc, on_epoch=True, logger=True, batch_size=True)
 
 
     def on_test_end(self):
         prefix = "transfer" if self.transfer else "pre"
         self.logger.log_table(key=f"{prefix}/test/scores", data=self.test_rows, columns=["dbn", "mcc", "f1"])
-        # fig = sns.violinplot([row[2] for row in self.test_rows], cut=0)
-        # fig = px.violin([row[2] for row in self.test_rows])
-        # table = wandb.Table(columns = ["plotly_figure"])
-        # path_to_plotly_html = "./plotly_figure.html"
-        # fig.write_html(path_to_plotly_html, auto_play = False)
-        # table.add_data(wandb.Html(path_to_plotly_html))
-        # self.logger.experiment.log({"test_table": table})
-        # self.logger.experiment.log({f"{prefix}/test_mcc": fig})
-        # self.logger.experiment.log({"predction": self.test_vals})
 
 
     def configure_optimizers(self):

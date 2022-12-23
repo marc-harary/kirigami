@@ -18,11 +18,10 @@ from torchmetrics.functional import matthews_corrcoef
 from torchmetrics.functional import f1_score
 from torchmetrics import (MatthewsCorrCoef, F1Score, PrecisionRecallCurve,
     Precision, Recall, PearsonCorrCoef, MeanAbsoluteError)
-from torchmetrics.functional.classification import 
+from torchmetrics.functional.classification import * 
 
 from tqdm import tqdm
 
-from kirigami.spot import ResNetBlock
 from kirigami.qrna import QRNABlock
 from kirigami.fork import Fork, ForkHead
 from kirigami.post import Greedy, Dynamic, Symmetrize, RemoveSharp, Blossom
@@ -30,6 +29,11 @@ from kirigami.utils import mat2db
 from kirigami.transformer import AttentionBlock
 from kirigami.loss import ForkLoss
 
+
+METRICS = dict(f1=binary_f1_score,
+               recall=binary_recall,
+               precision=binary_precision,
+               mcc=binary_matthews_corrcoef)
 
 
 class KirigamiModule(pl.LightningModule):
@@ -68,13 +72,13 @@ class KirigamiModule(pl.LightningModule):
         self.transfer = transfer
         self.save_hyperparameters()
 
-        self.metrics_thres = torch.linspace(0, 1, n_thres)
+        self.metrics_thres = torch.linspace(0, 1, n_val_thres)
         self.metrics = dict(mcc=binary_matthews_corrcoef,
                             f1=binary_f1_score,
                             prec=binary_precision,
                             rec=binary_recall) 
-        self.test_mcc = MatthewsCorrCoef(num_classes=2, threshold=0.5, task="binary"))
-        self.test_f1 = F1Score(threshold=0.5, task="binary"))
+        self.test_mcc = MatthewsCorrCoef(num_classes=2, threshold=0.5, task="binary")
+        self.test_f1 = F1Score(threshold=0.5, task="binary")
         for dist in self.dist_types:
             setattr(self, f"val_{dist}_pcc", PearsonCorrCoef())
             setattr(self, f"val_{dist}_mae", MeanAbsoluteError())
@@ -132,8 +136,6 @@ class KirigamiModule(pl.LightningModule):
         # self.post_proc = Blossom()
 
 
-
-
     def on_training_epoch_start(self):
         if self.trainer.precision == 32:
             return
@@ -143,9 +145,9 @@ class KirigamiModule(pl.LightningModule):
 
     def on_validation_epoch_start(self):
         self.on_training_epoch_start()
-        for prd in ["proc", "raw"]:
-            for metric in ["mcc", "f1", "prec", "rec"]:
-                setattr(self, prd + "_" + metric, [])
+        for metric_name in METRICS.keys():
+            for prd_name in ["proc", "raw"]:
+                setattr(self, f"{prd_name}_{metric_name}", [])
             
 
     def training_step(self, batch, batch_idx):
@@ -178,22 +180,19 @@ class KirigamiModule(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         self.on_training_epoch_end()
-        mccs = torch.tensor(self.proc_mccs_)
-        f1s = torch.tensor(self.proc_f1s_)
-        recs = torch.tensor(self.proc_recs_)
-        precs = torch.tensor(self.proc_precs_)
-        idx = mccs.mean(0).argmax()
+        metrics = {}
+        for metric in METRICS.keys():
+            metrics[metric] = torch.tensor(getattr(self, f"proc_{metric}")).mean(0)
+        idx = metrics["mcc"].argmax()
         thres = self.metrics_thres[idx]
-        mcc = mccs.mean(0).max()
         prefix = "transfer" if self.transfer else "pre"
-        self.log(f"{prefix}/val/proc/mcc", mcc, on_epoch=True, logger=True,
+        self.log(f"{prefix}/val/proc/mcc", metrics["mcc"][idx], on_epoch=True, logger=True,
             prog_bar=True)
         self.log(f"{prefix}/val/proc/thres", thres, on_epoch=True,
             logger=True)
-        self.log(f"{prefix}/val/proc/rec", recs.mean(0)[idx], on_epoch=True,
-            logger=True)
-        self.log(f"{prefix}/val/proc/prec", precs.mean(0)[idx], on_epoch=True,
-            logger=True)
+        for key in ["f1", "precision", "recall"]:
+            self.log(f"{prefix}/val/proc/{key}", metrics[key][idx], on_epoch=True,
+                logger=True)
         
 
     def validation_step(self, batch, batch_idx):
@@ -213,12 +212,13 @@ class KirigamiModule(pl.LightningModule):
         self.log(f"{prefix}/val/tot_loss", loss_dict["tot"], logger=True)
         self.log(f"{prefix}/val/con_loss", loss_dict["con"], logger=True)
 
-        for thres in self.metrics_thres:
-            cur_metrics = []
-            for metric in [b_mcc, b_f1, b_rec, b_prec]:
-                for prd in [prd_proc, prd_grd]:
-                    cur_metrics.append(metric(prd, grd, threshold=thres))
-            self.metrics.append(cur_metrics)
+        for metric_name, metric in METRICS.items():
+            for prd_name, prd in zip(["proc", "raw"], [prd_proc, prd_raw]):
+                cur_metrics = []
+                for thres in self.metrics_thres:
+                    cur_metrics.append(metric(prd, grd, threshold=thres.item()))
+                metric_list = getattr(self, f"{prd_name}_{metric_name}")
+                metric_list.append(cur_metrics)
 
         self.log(f"{prefix}/val/tot_loss", loss_dict["tot"], logger=True, batch_size=True)
         thres_str = int(thres * 100)

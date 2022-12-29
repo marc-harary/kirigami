@@ -1,35 +1,54 @@
+from pathlib import Path
+import os
+from math import ceil, floor
+from torch.nn import functional as F
 import torch
 import torch.nn as nn
-import os
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
-from torch.nn import functional as F
-from math import ceil, floor
 
 
 class DataModule(pl.LightningDataModule):
 
-    dist_types = ["PP", "O5O5", "C5C5", "C4C4", "C3C3", "C2C2", "C1C1", "O4O4", "O3O3", "NN"]
+    dist_types_all = ["PP", "O5O5", "C5C5", "C4C4", "C3C3", "C2C2", "C1C1", "O4O4", "O3O3", "NN"]
 
     def __init__(self,
-                 train_dataset,
-                 val_dataset,
+                 train_path: Path,
+                 val_path: Path,
                  bins: torch.Tensor,
                  batch_size: int = 1,
-                 test_dataset = None,
+                 test_path: Path = None,
+                 densify = False,
                  dists = None,
-                 feats = None,
-                 inv_eps: float = 1e-8):
+                 feats = None):
         super().__init__()
+        self.train_path = train_path
+        self.val_path = val_path
+        self.test_path = test_path
+        self.bins = bins
+        self.feats = feats if feats is not None else []
+        self.dists = dists
+        self.batch_size = batch_size
+        self.densify = densify
+
+    
+    def setup(self, stage: str):
+        train_dataset = torch.load(self.train_path)
+        val_dataset = torch.load(self.val_path)
+        test_dataset = torch.load(self.test_path)
+
+        train_dataset = self._filt_dset(train_dataset)
+        val_dataset = self._filt_dset(val_dataset)
+        test_dataset = self._filt_dset(test_dataset)
+
+        if self.densify:
+            self._densify(train_dataset)
+            self._densify(val_dataset)
+            self._densify(test_dataset)
+
         self.train_dataset = train_dataset
         self.val_dataset = val_dataset
         self.test_dataset = test_dataset
-        self.bins = bins
-        self.inv_eps = inv_eps
-        self.feats = feats if feats is not None else []
-        self.dists = dists
-        
-        self.batch_size = batch_size
 
 
     def train_dataloader(self):
@@ -92,51 +111,6 @@ class DataModule(pl.LightningDataModule):
         return F.pad(tens, padding, "constant", val)
 
 
-    def _collate_row(self, row, pad_L):
-        seq = self._concat(row["seq"])
-        if seq.is_sparse:
-            seq = seq.to_dense()
-        feat_list = [seq]
-        L = seq.shape[-1]
-        for feat_name in self.feats:
-            feat = row[feat_name].float()
-            try:
-                feat = feat.reshape_as(1, 1, L, L)
-            except: # error handling accounts for what's probably a PyTorch bug
-                # feat = torch.zeros(1, 1, L, L).to_sparse()
-                feat = torch.zeros(1, 1, L, L)
-            if feat.is_sparse:
-                feat = feat.to_dense()
-            feat_list.append(feat)
-        feat = torch.cat(feat_list, 1).float()#.to_dense()
-        feat = self._pad(feat, pad_L, 0.)
-
-        pad = lambda tens: self._pad(tens, pad_L, torch.nan)
-
-        lab = {}
-        if row["dssr"].is_sparse:
-            row["dssr"] = row["dssr"].to_dense()
-        lab["con"] = row["dssr"].float().unsqueeze(0)
-        lab["con"] = self._pad(lab["con"], pad_L, torch.nan)
-        lab["dists"] = {}
-        for dist_type, dist_ in zip(self.dist_types, row["dists"]):
-            lab["dists"][dist_type] = {}
-            if dist_.is_sparse:
-                dist_ = dist_.to_dense()
-            dist = dist_.unsqueeze(0).unsqueeze(0)
-            dist[dist <= 0] = torch.nan
-            lab["dists"][dist_type]["raw"] = pad(dist)
-            lab["dists"][dist_type]["inv"] = 1 / (dist + self.inv_eps)
-            lab["dists"][dist_type]["inv"] = pad(lab["dists"][dist_type]["inv"])
-            lab["dists"][dist_type]["inv"][:, :,  ]= pad(lab["dists"][dist_type]["inv"])
-            lab["dists"][dist_type]["inv"][dist <= 0] = torch.nan
-            lab["dists"][dist_type]["bin"] = self._one_hot_bin(dist)
-            lab["dists"][dist_type]["bin"][:, :, dist_ <= 0] = torch.nan
-            lab["dists"][dist_type]["bin"] = pad(lab["dists"][dist_type]["bin"])
-
-        return feat, lab
-
-
     def _collate_fn(self, batch):
         b_size = len(batch)
         max_L = max([row["seq"].shape[-1] for row in batch])
@@ -154,7 +128,6 @@ class DataModule(pl.LightningDataModule):
                 for j, feat_name in enumerate(self.feats):
                     feat[i, 8+j, start:end, start:end] = row[feat_name].to_dense()
                 lab["con"][i, :, start:end, start:end] = row["dssr"].to_dense()
-                # lab["con"][start:end, start:end] = row["dssr"].to_dense()
             else:
                 feat[i, :8, start:end, start:end] = self._concat(row["seq"])
                 for j, feat_name in enumerate(self.feats):
@@ -166,7 +139,6 @@ class DataModule(pl.LightningDataModule):
         for dist in self.dists:
             lab["dists"][dist] = {}
             lab["dists"][dist]["raw"] = torch.full((b_size, 1, max_L, max_L), torch.nan)
-            lab["dists"][dist]["inv"] = torch.full((b_size, 1, max_L, max_L), torch.nan)
             lab["dists"][dist]["bin"] = torch.full((b_size, self.bins.numel(), max_L, max_L), torch.nan)
 
             for i, row in enumerate(batch):
@@ -179,7 +151,34 @@ class DataModule(pl.LightningDataModule):
                 dist_tensor[dist_tensor <= 0] = torch.nan
                 lab["dists"][dist]["raw"][i, 0, start:end, start:end] = dist_tensor
                 lab["dists"][dist]["bin"][i, :, start:end, start:end] = self._one_hot_bin(dist_tensor)
-                lab["dists"][dist]["inv"][i, 0, start:end, start:end] = 1 / (dist_tensor + self.inv_eps)
 
         return feat, lab
+
+    
+    def _densify(self, dset):
+        for row in dset:
+            for key, value in row.items():
+                if key == "dist":
+                    for key, value in row["dists"].items():
+                        if row["dists"][key].is_sparse:
+                            row["dists"][key] = value.to_dense()
+                else:
+                    if row[key].is_sparse:
+                        row[key] = row[key].to_dense()
+
+
+    def _filt_dset(self, dset):# , feats, dists = None):
+        out = []
+        for row in dset:
+            out_row = {}
+            out_row["seq"] = row["seq"]
+            out_row["dssr"] = row["dssr"]
+            for feat in self.feats:
+                out_row[feat] = row[feat]
+            out_row["dists"] = {}
+            for dist in self.dists:
+                i = self.dist_types_all.index(dist)
+                out_row["dists"][dist] = row["dists"][i]
+            out.append(out_row)
+        return out
 

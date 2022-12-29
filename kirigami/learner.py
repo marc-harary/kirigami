@@ -83,9 +83,9 @@ class KirigamiModule(pl.LightningModule):
         self.crit = ForkLoss(**crit_kwargs)
 
         if self.transfer:
-            self.model = ResNet(**model_kwargs)
-        else:
             self.model = ResNetParallel(**model_kwargs)
+        else:
+            self.model = ResNet(**model_kwargs)
             
 
         if post_proc == "greedy":
@@ -122,8 +122,6 @@ class KirigamiModule(pl.LightningModule):
             logger=True, batch_size=True)
         for dist in self.dists:
             self.log(f"transfer/train/{dist}_bin_loss", loss_dict[dist]["bin"],
-                on_epoch=True, logger=True, batch_size=True)
-            self.log(f"transfer/train/{dist}_inv_loss", loss_dict[dist]["inv"],
                 on_epoch=True, logger=True, batch_size=True)
 
         return loss_dict["tot"]
@@ -205,8 +203,6 @@ class KirigamiModule(pl.LightningModule):
             self.log(f"transfer/val/{dist}_mae", mae_obj, on_epoch=True,
                 logger=True, batch_size=True)
             self.log(f"transfer/val/{dist}_bin_loss", loss_dict[dist]["bin"],
-                on_epoch=True, logger=True, batch_size=True)
-            self.log(f"transfer/val/{dist}_inv_loss", loss_dict[dist]["inv"],
                 on_epoch=True, logger=True, batch_size=True)
             
         return loss_dict["tot"]

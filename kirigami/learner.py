@@ -22,12 +22,12 @@ from torchmetrics.functional.classification import *
 
 from tqdm import tqdm
 
-from kirigami.qrna import QRNABlock
+from kirigami.resnet import ResNet, ResNetParallel # QRNABlock, ResNet
 from kirigami.fork import Fork, ForkHead
 from kirigami.post import Greedy, Dynamic, Symmetrize, RemoveSharp, Blossom
 from kirigami.utils import mat2db
-from kirigami.transformer import AttentionBlock
 from kirigami.loss import ForkLoss
+from kirigami.unet import UNet
 
 
 METRICS = dict(f1=binary_f1_score,
@@ -43,33 +43,26 @@ class KirigamiModule(pl.LightningModule):
                   "O3O3", "NN"]
     
     def __init__(self,
-                 n_blocks: int,
-                 n_channels: int,
-                 p: float,
-                 feats: list, 
-                 dists: list,
+                 model_kwargs: dict,
+                 crit_kwargs: dict,
                  bins: torch.Tensor,
-                 n_cutoffs: int,
-                 pos_weight: float,
-                 con_weight: float,
-                 inv_weight: float,
-                 bin_weight: float,
                  transfer: bool,
-                 n_val_thres: int = 10, 
-                 lr: float = 1e-5,
-                 arch: str = "QRNA",
-                 norm: str = "InstanceNorm2d",
-                 chunks: int = 4,
+                 optim: str,
+                 lr: float,
+                 dists: list = None,
+                 n_val_thres: int = 100, 
+                 n_cutoffs: int = 1000,
                  post_proc: str = "greedy"):
 
         super().__init__()
 
-        self.n_blocks = n_blocks
-        self.chunks = chunks
         self.dists = [] if not dists else dists
         self.cutoffs = torch.linspace(0, 1, n_cutoffs)
-        self.lr = lr
         self.transfer = transfer
+
+        self.lr = lr
+        self.optim = getattr(torch.optim, optim)
+
         self.save_hyperparameters()
 
         self.metrics_thres = torch.linspace(0, 1, n_val_thres)
@@ -79,61 +72,26 @@ class KirigamiModule(pl.LightningModule):
                             rec=binary_recall) 
         self.test_mcc = MatthewsCorrCoef(num_classes=2, threshold=0.5, task="binary")
         self.test_f1 = F1Score(threshold=0.5, task="binary")
-        for dist in self.dist_types:
-            setattr(self, f"val_{dist}_pcc", PearsonCorrCoef())
-            setattr(self, f"val_{dist}_mae", MeanAbsoluteError())
+        if transfer:
+            for dist in self.dist_types:
+                setattr(self, f"val_{dist}_pcc", PearsonCorrCoef())
+                setattr(self, f"val_{dist}_mae", MeanAbsoluteError())
 
         self.test_rows = []
         self.test_vals = []
 
-        self.crit = ForkLoss(pos_weight=pos_weight,
-                             con_weight=con_weight,
-                             inv_weight=inv_weight,
-                             bin_weight=bin_weight,
-                             dists=dists,
-                             use_logit=False)
+        self.crit = ForkLoss(**crit_kwargs)
 
-        dilations = 2 * n_blocks * [1]
-        conv_init = torch.nn.Conv2d(in_channels=len(feats) + 8,
-                                    out_channels=n_channels,
-                                    kernel_size=3,
-                                    padding=1)
-        blocks = []
-        if arch == "SPOT":
-            for i in range(n_blocks):
-                block = ResNetBlock(p=p,
-                                    dilations=dilations[2*i:2*(i+1)],
-                                    kernel_sizes=(3,5),
-                                    n_channels=n_channels)
-                blocks.append(block)
-                # blocks.append(Symmetrize())
-                # blocks.append(RemoveSharp())
-        elif arch == "QRNA":
-            for i in range(n_blocks):
-                block = QRNABlock(p=p,
-                                  dilations=dilations[2*i:2*(i+1)],
-                                  kernel_sizes=(3,5),
-                                  n_channels=n_channels,
-                                  norm=norm,
-                                  resnet=True)
-                blocks.append(block)
-                # blocks.append(Symmetrize())
-                # blocks.append(RemoveSharp())
-        elif arch == "transformer":
-            for i in range(n_blocks):
-                block = AttentionBlock(dropout=p,
-                                       embed_dim=n_channels,
-                                       hidden_dim=n_channels,
-                                       num_heads=8)
-                blocks.append(block)
-        fork = Fork(n_channels=n_channels, n_bins=len(bins), kernel_size=5, dists=dists, add_sigmoid=True)
-        self.model = torch.nn.Sequential(*[conv_init, *blocks, fork])
+        if self.transfer:
+            self.model = ResNet(**model_kwargs)
+        else:
+            self.model = ResNetParallel(**model_kwargs)
+            
 
         if post_proc == "greedy":
             self.post_proc = Greedy()
         else:
             self.post_proc = Dynamic()
-        # self.post_proc = Blossom()
 
 
     def on_training_epoch_start(self):
@@ -334,7 +292,7 @@ class KirigamiModule(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        optimizer = optim.Adam(self.parameters(), lr=self.lr)
+        optimizer = self.optim(self.parameters(), lr=self.lr)
         return optimizer
 
 

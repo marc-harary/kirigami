@@ -158,7 +158,7 @@ class DataModule(pl.LightningDataModule):
     def _densify(self, dset):
         for row in dset:
             for key, value in row.items():
-                if key == "dist":
+                if key == "dist" or key == "dists":
                     for key, value in row["dists"].items():
                         if row["dists"][key].is_sparse:
                             row["dists"][key] = value.to_dense()

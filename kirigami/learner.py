@@ -23,11 +23,9 @@ from torchmetrics.functional.classification import *
 from tqdm import tqdm
 
 from kirigami.resnet import ResNet, ResNetParallel # QRNABlock, ResNet
-from kirigami.fork import Fork, ForkHead
 from kirigami.post import Greedy, Dynamic, Symmetrize, RemoveSharp, Blossom
 from kirigami.utils import mat2db
 from kirigami.loss import ForkLoss
-from kirigami.unet import UNet
 
 
 METRICS = dict(f1=binary_f1_score,

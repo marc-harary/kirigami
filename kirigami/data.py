@@ -1,6 +1,7 @@
 from pathlib import Path
 import os
 from math import ceil, floor
+import math
 from torch.nn import functional as F
 import torch
 import torch.nn as nn
@@ -15,8 +16,10 @@ class DataModule(pl.LightningDataModule):
     def __init__(self,
                  train_path: Path,
                  val_path: Path,
-                 bins: torch.Tensor,
                  batch_size: int = 1,
+                 bin_min: float = None,
+                 bin_max: float = None,
+                 bin_step: float = None,
                  test_path: Path = None,
                  densify = False,
                  dists = None,
@@ -25,30 +28,29 @@ class DataModule(pl.LightningDataModule):
         self.train_path = train_path
         self.val_path = val_path
         self.test_path = test_path
-        self.bins = bins
+        if bin_min is not None:
+            self.bin_min = bin_min
+            self.bin_max = bin_max
+            self.bin_step = bin_step
+            idx_min = math.floor(bin_min / bin_step + .5)
+            idx_max = math.floor(bin_max / bin_step + .5)
+            self.n_bins = idx_max - idx_min + 1 
         self.feats = feats if feats is not None else []
         self.dists = dists
         self.batch_size = batch_size
         self.densify = densify
 
-    
+        
     def setup(self, stage: str):
-        train_dataset = torch.load(self.train_path)
-        val_dataset = torch.load(self.val_path)
-        test_dataset = torch.load(self.test_path)
-
-        train_dataset = self._filt_dset(train_dataset)
-        val_dataset = self._filt_dset(val_dataset)
-        test_dataset = self._filt_dset(test_dataset)
-
-        if self.densify:
-            self._densify(train_dataset)
-            self._densify(val_dataset)
-            self._densify(test_dataset)
-
-        self.train_dataset = train_dataset
-        self.val_dataset = val_dataset
-        self.test_dataset = test_dataset
+        for subset in ["train", "val", "test"]:
+            path = getattr(self, subset + "_path")
+            if path is None:
+                continue
+            dataset = torch.load(path)
+            dataset = self._filt_dset(dataset)
+            if self.densify:
+                self._densify(dataset)
+            setattr(self, subset + "_dataset", dataset)
 
 
     def train_dataloader(self):
@@ -82,26 +84,39 @@ class DataModule(pl.LightningDataModule):
         return out
 
 
+    # def _one_hot_bin(self, ipt):
+    #     n_bins = self.bins.numel()
+    #     n_data = ipt.numel()
+    #     # expand both tensors to shape (ipt.size(), bins.size())
+    #     ipt_flat = ipt.flatten()
+    #     ipt_exp = ipt_flat.expand(n_bins, -1)
+    #     bins_exp = self.bins.expand(n_data, -1).T
+    #     # find which bins ipt fits in
+    #     bin_bools = (ipt_exp <= bins_exp).int()
+    #     # get index of largest bin ipt fits in
+    #     vals, idxs = torch.max(bin_bools, 0)
+    #     # if max is 0, then val is greater than every bin
+    #     idxs[vals == 0] = n_bins - 1
+    #     # construct one-hot
+    #     one_hot = torch.zeros(n_bins, n_data)#, device=ipt.device)
+    #     one_hot[idxs, torch.arange(n_data)] = 1
+    #     # reshape back into ipt's shape
+    #     one_hot = one_hot.reshape(-1, n_bins, ipt.shape[-2], ipt.shape[-1])
+    #     one_hot[..., ipt.isnan()] = torch.nan
+    #     return one_hot
+
+
     def _one_hot_bin(self, ipt):
-        n_bins = self.bins.numel()
-        n_data = ipt.numel()
-        # expand both tensors to shape (ipt.size(), bins.size())
-        ipt_flat = ipt.flatten()
-        ipt_exp = ipt_flat.expand(n_bins, -1)
-        bins_exp = self.bins.expand(n_data, -1).T
-        # find which bins ipt fits in
-        bin_bools = (ipt_exp <= bins_exp).int()
-        # get index of largest bin ipt fits in
-        vals, idxs = torch.max(bin_bools, 0)
-        # if max is 0, then val is greater than every bin
-        idxs[vals == 0] = n_bins - 1
-        # construct one-hot
-        one_hot = torch.zeros(n_bins, n_data)#, device=ipt.device)
-        one_hot[idxs, torch.arange(n_data)] = 1
-        # reshape back into ipt's shape
-        one_hot = one_hot.reshape(-1, n_bins, ipt.shape[-2], ipt.shape[-1])
-        one_hot[..., ipt.isnan()] = torch.nan
-        return one_hot
+        ipt = ipt.clip(self.bin_min, self.bin_max)
+        idx_min = math.floor(self.bin_min / self.bin_step + .5)
+        idx_max = math.floor(self.bin_max / self.bin_step + .5)
+        num_classes = idx_max - idx_min + 1
+        idx = torch.floor(ipt / self.bin_step + .5).long() - idx_min
+        idx[..., ipt.isnan()] = 0 # need to get rid of nans for one_hot
+        opt = F.one_hot(idx, num_classes).float()
+        opt = opt.transpose(-1, 0)
+        opt[..., ipt.isnan()] = torch.nan
+        return opt
 
 
     def _pad(self, tens, L, val):
@@ -139,7 +154,7 @@ class DataModule(pl.LightningDataModule):
         for dist in self.dists:
             lab["dists"][dist] = {}
             lab["dists"][dist]["raw"] = torch.full((b_size, 1, max_L, max_L), torch.nan)
-            lab["dists"][dist]["bin"] = torch.full((b_size, self.bins.numel(), max_L, max_L), torch.nan)
+            lab["dists"][dist]["bin"] = torch.full((b_size, self.n_bins, max_L, max_L), torch.nan)
 
             for i, row in enumerate(batch):
                 L = row["seq"].shape[-1]

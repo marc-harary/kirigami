@@ -1,6 +1,9 @@
 torch
-argparse
-munch
-multipledispatch
+pytorch_lightning
+numpy
+torchmetrics
+cython
 tqdm
-pybind11
+timm
+networkx
+ViennaRNA

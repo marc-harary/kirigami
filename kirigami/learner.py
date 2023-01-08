@@ -1,3 +1,7 @@
+import numpy as np
+import wandb
+from tqdm import tqdm
+
 import torch
 import torch.nn as nn
 from torch import optim
@@ -6,14 +10,6 @@ import pytorch_lightning as pl
 from torch.utils.checkpoint import checkpoint_sequential
 from torch.optim.lr_scheduler import *
 
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
-import plotly.express as px
-
-import wandb
-import networkx as nx
-
 import torchmetrics
 from torchmetrics.functional import matthews_corrcoef
 from torchmetrics.functional import f1_score
@@ -21,18 +17,11 @@ from torchmetrics import (MatthewsCorrCoef, F1Score, PrecisionRecallCurve,
     Precision, Recall, PearsonCorrCoef, MeanAbsoluteError)
 from torchmetrics.functional.classification import * 
 
-from tqdm import tqdm
-
-from kirigami.resnet import ResNet, ResNetParallel, ConvNeXt # QRNABlock, ResNet
+from kirigami.resnet import ResNet, ResNetParallel
 from kirigami.post import Greedy, Dynamic, Symmetrize, RemoveSharp, Blossom
 from kirigami.utils import mat2db
 from kirigami.loss import ForkLoss
 
-
-METRICS = dict(f1=binary_f1_score,
-               recall=binary_recall,
-               precision=binary_precision,
-               mcc=binary_matthews_corrcoef)
 
 
 class KirigamiModule(pl.LightningModule):
@@ -111,7 +100,7 @@ class KirigamiModule(pl.LightningModule):
 
     def on_validation_epoch_start(self):
         self.on_training_epoch_start()
-        for metric_name in METRICS.keys():
+        for metric_name in self.metrics.keys():
             for prd_name in ["proc", "raw"]:
                 setattr(self, f"{prd_name}_{metric_name}", [])
             
@@ -145,7 +134,7 @@ class KirigamiModule(pl.LightningModule):
     def on_validation_epoch_end(self):
         self.on_training_epoch_end()
         metrics = {}
-        for metric in METRICS.keys():
+        for metric in self.metrics.keys():
             metrics[metric] = torch.tensor(getattr(self, f"proc_{metric}")).float().mean(0)
         idx = metrics["mcc"].argmax()
         thres = self.metrics_thres[idx]
@@ -179,7 +168,7 @@ class KirigamiModule(pl.LightningModule):
         self.log(f"{prefix}/val/raw/loss", F.binary_cross_entropy(prd_raw, grd.float()))
         self.log(f"{prefix}/val/proc/loss", F.binary_cross_entropy(prd_proc, grd.float()))
 
-        for metric_name, metric in METRICS.items():
+        for metric_name, metric in self.metrics.items():
             for prd_name, prd in zip(["proc", "raw"], [prd_proc, prd_raw]):
                 cur_metrics = []
                 for thres in self.metrics_thres:
@@ -301,8 +290,6 @@ class KirigamiModule(pl.LightningModule):
     def configure_optimizers(self):
         if self.optim is torch.optim.SGD:
             optimizer = self.optim(self.parameters(), lr=self.lr, momentum=self.momentum)
-        else:
-            print("here")
             optimizer = self.optim(self.parameters(), lr=self.lr)
         return optimizer
 

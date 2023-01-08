@@ -6,20 +6,11 @@ from collections import deque
 import numpy as np
 import torch
 # import RNA
-import matplotlib.pyplot as plt
-from matplotlib import patches
 
 import pyximport
 # pyximport.install(setup_args=dict(include_dirs=np.get_include()))
 # import nussinov
 
-
-ROOT = os.path.dirname(__file__)
-EXE = os.path.join(ROOT, "PETfold")
-os.environ["PETFOLDBIN"] = ROOT
-
-SPOT_EXE = "/home/mah258/SPOT-RNA/SPOT-RNA.py"
-PROB_PAIRS_EXE = "/home/mah258/CSSR/exe/ProbablePairRR"
 
 PSEUDO_LEFT = "({[<" + string.ascii_uppercase
 PSEUDO_RIGHT = ")}]>" + string.ascii_lowercase
@@ -170,138 +161,3 @@ def embed_bpseq(path, ex_noncanon=False, ex_sharp=False):
         con[con_idxs_[:,1], con_idxs_[:,0]] = 1
     return con, seq, dbn
 
-
-def run_pet(fasta, suboptimal=0, ppfile=False, ppfold=False, return_dbn=False):
-    # write fasta to output file
-    tmp_fasta = "/tmp/pet.fasta"
-    tmp_pfile = "/tmp/pet.txt"
-    L = len(fasta)
-    with open(tmp_fasta, "w") as f:
-        f.write(f">tmp\n{fasta}\n")
-    # build command
-    command = [EXE, "--verbose", "-f", tmp_fasta]
-    if ppfile:
-        command.extend(["--ppfile", tmp_pfile])
-    # if ppfold:
-    #     command.append("--ppfold")
-    if suboptimal > 0:
-        command.extend(["--suboptimal", str(suboptimal)])
-    output = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    out_list = []
-    # rnafold output
-    pattern = re.compile(r"Sequence  1 structure = (?P<db>[\|\.\,\(\)\{\}]{4,})", re.MULTILINE)
-    match = pattern.search(output.stdout)
-    if return_dbn:
-        out_list.append((match.group("db"), parsedb(match.group("db"))))
-    else:
-        out_list.append(parsedb(match.group("db")))
-    # pfold output
-    pattern = re.compile(r"Pfold RNA structure:\t(?P<db>[\.\,\(\)\{\}]{4,})", re.MULTILINE)
-    match = pattern.search(output.stdout)
-    if return_dbn:
-        out_list.append((match.group("db"), parsedb(match.group("db"))))
-    else:
-        out_list.append(parsedb(match.group("db")))
-    # petfold output
-    pattern = re.compile(r"PETfold RNA structure:\t(?P<db>[\.\,\(\)\{\}]{4,})", re.MULTILINE)
-    match = pattern.search(output.stdout)
-    if return_dbn:
-        out_list.append((match.group("db"), parsedb(match.group("db"))))
-    else:
-        out_list.append(parsedb(match.group("db")))
-    # pfile
-    if ppfile:
-        prob_mat = torch.zeros(L, L)
-        with open("/tmp/pet.txt", "r") as f:
-            lines = f.read().splitlines()
-        for i, line in enumerate(lines[1:-2]):
-            prob_mat[i, :] = torch.tensor(list(map(float, line.split())))
-        out_list.append(prob_mat)
-    # suboptimal structs
-    if suboptimal > 0:
-        pattern = re.compile(r"Suboptimal structure:   (?P<db>[\.\,\(\)\{\}]{4,})\t(?P<score>0\.\d+)", re.MULTILINE)
-        match_itr = pattern.finditer(output.stdout)
-        dbn_score = [(match.group("db"), float(match.group("score"))) for match in match_itr]
-        dbn_score.sort(key=lambda tup: tup[1], reverse=True)
-        subopts = [parsedb(dbn) for dbn, score in dbn_score]
-        out_list.append(subopts)
-    return out_list
-
-
-def run_mxfold2(seq, return_mat=True):
-    tmp_fasta = "/tmp/pet.fasta"
-    with open(tmp_fasta, "w") as f: 
-        f.write(f">tmp\n{seq}\n")
-    # build command
-    command = ["mxfold2", "predict", tmp_fasta]
-    output = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    pattern = re.compile(r"(?P<db>[\|\.\,\(\)\{\}]{4,})", re.MULTILINE)
-    match = pattern.search(output.stdout)
-    dbn = match.group("db")
-    if not return_mat:
-        return dbn
-    return dbn, parsedb(dbn)
-
-
-def run_spotrna(seq):
-    tmp_fasta = "/tmp/temp.fasta"
-    tmp_bpseq = "/tmp/temp.bpseq"
-    with open(tmp_fasta, "w") as f: 
-        f.write(f">tmp\n{seq}\n")
-    # build command
-    command = ["python", SPOT_EXE, "--inputs", tmp_fasta, "--outputs", "/tmp/"]
-    output = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    return output
-
-
-def plot_dbn(struct, seq, ax = None, size=1):
-    if ax is None:
-        fig, ax = plt.subplots()
-    coord_objs = RNA.simple_xy_coordinates(struct)
-    coords_tups = [(coord.X, coord.Y) for coord in coord_objs[:-1]]
-    coords = np.array(coords_tups)
-    coords -= coords.min(0)
-    coords /= coords.max(0)
-    for char, (x, y) in zip(seq, coords):
-        ax.text(x, y,
-                size=size,
-                ha="center",
-                va="center",
-                s=char,
-                bbox=dict(boxstyle="circle",
-                          color=COLORS[char]))
-    nest_idxs, pseudo_idxs = parsedb(struct, return_idxs=True)
-    for i, j in nest_idxs:
-        if i < j:
-            con = patches.ConnectionPatch(coords[i], coords[j], ax.transData, linewidth=1, color="black")
-            ax.add_artist(con)
-    for i, j in pseudo_idxs:
-        if i < j:
-            con = patches.ConnectionPatch(coords[i], coords[j], ax.transData, linewidth=2, color="red")
-            ax.add_artist(con)
-    for first, second in zip(coords[:-1,:], coords[1:,:]):
-        con = patches.ConnectionPatch(first, second, ax.transData, linewidth=1, color="gray")
-        ax.add_artist(con)
-    ax.set(aspect=1.0)
-    ax.axis("off")
-    return ax
-
-
-def run_prob_pair(seq):
-    tmp_fasta = "/tmp/prob.fasta"
-    tmp_ct = "/tmp/prob.ct"
-    with open(tmp_fasta, "w") as f: 
-        f.write(f">tmp\n{seq}\n")
-    # build command
-    command = [PROB_PAIRS_EXE, "--sequence", tmp_fasta, tmp_ct]
-    res = subprocess.run(command, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-
-    ct_mat = torch.from_numpy(np.loadtxt(tmp_ct))
-    out = torch.zeros(len(seq), len(seq))
-    if len(ct_mat) > 0:
-        ii = ct_mat[:,0].long() - 1
-        jj = ct_mat[:,1].long() - 1
-        probs = ct_mat[:,-1].float()
-        out[ii, jj] = out[jj, ii] = probs
-
-    return out

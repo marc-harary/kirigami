@@ -4,6 +4,7 @@ from torch import optim
 import torch.nn.functional as F
 import pytorch_lightning as pl
 from torch.utils.checkpoint import checkpoint_sequential
+from torch.optim.lr_scheduler import *
 
 import numpy as np
 import seaborn as sns
@@ -22,7 +23,7 @@ from torchmetrics.functional.classification import *
 
 from tqdm import tqdm
 
-from kirigami.resnet import ResNet, ResNetParallel # QRNABlock, ResNet
+from kirigami.resnet import ResNet, ResNetParallel, ConvNeXt # QRNABlock, ResNet
 from kirigami.post import Greedy, Dynamic, Symmetrize, RemoveSharp, Blossom
 from kirigami.utils import mat2db
 from kirigami.loss import ForkLoss
@@ -43,10 +44,13 @@ class KirigamiModule(pl.LightningModule):
     def __init__(self,
                  model_kwargs: dict,
                  crit_kwargs: dict,
-                 bins: torch.Tensor,
                  transfer: bool,
                  optim: str,
                  lr: float,
+                 momentum: float = 0.9,
+                 bin_step: float = None,
+                 bin_min: float = None,
+                 bin_max: float = None,
                  dists: list = None,
                  n_val_thres: int = 100, 
                  n_cutoffs: int = 1000,
@@ -57,9 +61,12 @@ class KirigamiModule(pl.LightningModule):
         self.dists = [] if not dists else dists
         self.cutoffs = torch.linspace(0, 1, n_cutoffs)
         self.transfer = transfer
-
+        self.bin_step = bin_step
+        self.bin_min = bin_min
+        self.bin_max = bin_max
         self.lr = lr
         self.optim = getattr(torch.optim, optim)
+        self.momentum = momentum
 
         self.save_hyperparameters()
 
@@ -85,11 +92,14 @@ class KirigamiModule(pl.LightningModule):
         else:
             self.model = ResNet(**model_kwargs)
             
-
         if post_proc == "greedy":
             self.post_proc = Greedy()
-        else:
+        elif post_proc == "blossom":
+            self.post_proc = Blossom()
+        elif post_proc == "dynamic":
             self.post_proc = Dynamic()
+        else:
+            raise ValueError("Invalid post-processing type.")
 
 
     def on_training_epoch_start(self):
@@ -112,14 +122,14 @@ class KirigamiModule(pl.LightningModule):
         lab_prd = self.model(feat)
         lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
         loss_dict = self.crit(lab_prd, lab_grd)
-
+    
         prefix = "transfer" if self.transfer else "pre"
         self.log(f"{prefix}/train/tot_loss", loss_dict["tot"], on_epoch=True,
             logger=True, batch_size=True)
         self.log(f"{prefix}/train/con_loss", loss_dict["con"], on_epoch=True,
             logger=True, batch_size=True)
         for dist in self.dists:
-            self.log(f"transfer/train/{dist}_bin_loss", loss_dict[dist]["bin"],
+            self.log(f"transfer/train/{dist}_bin_loss", loss_dict["dists"][dist],
                 on_epoch=True, logger=True, batch_size=True)
 
         return loss_dict["tot"]
@@ -136,13 +146,13 @@ class KirigamiModule(pl.LightningModule):
         self.on_training_epoch_end()
         metrics = {}
         for metric in METRICS.keys():
-            metrics[metric] = torch.tensor(getattr(self, f"proc_{metric}")).mean(0)
+            metrics[metric] = torch.tensor(getattr(self, f"proc_{metric}")).float().mean(0)
         idx = metrics["mcc"].argmax()
         thres = self.metrics_thres[idx]
         prefix = "transfer" if self.transfer else "pre"
         self.log(f"{prefix}/val/proc/mcc", metrics["mcc"][idx], on_epoch=True, logger=True,
             prog_bar=True)
-        self.log(f"{prefix}/val/proc/thres", thres, on_epoch=True,
+        self.log(f"{prefix}/val/proc/threshold", thres, on_epoch=True,
             logger=True)
         for key in ["f1", "precision", "recall"]:
             self.log(f"{prefix}/val/proc/{key}", metrics[key][idx], on_epoch=True,
@@ -153,37 +163,36 @@ class KirigamiModule(pl.LightningModule):
         feat, lab_grd = batch
         lab_prd = self.model(feat)
 
-        raw_con = lab_prd["con"]
-        mask = ~lab_grd["con"].isnan()
-        prd_raw = raw_con[mask]
-        grd = lab_grd["con"].int()[mask]
+        prd_raw = self.post_proc(lab_prd["con"], feat, sym_only=True)
+        prd_proc = self.post_proc(lab_prd["con"], feat, sym_only=False)
 
-        lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
+        grd = lab_grd["con"]
+        mask = ~grd.isnan()
+        grd = grd[mask]
+        prd_raw = prd_raw[mask]
+        prd_proc = prd_proc[mask]
+
         loss_dict = self.crit(lab_prd, lab_grd)
-        prd_proc = lab_prd["con"][mask]
 
         prefix = "transfer" if self.transfer else "pre"
-        self.log(f"{prefix}/val/tot_loss", loss_dict["tot"], logger=True)
-        self.log(f"{prefix}/val/con_loss", loss_dict["con"], logger=True)
+        self.log(f"{prefix}/val/tot_loss", loss_dict["tot"])
+        self.log(f"{prefix}/val/raw/loss", F.binary_cross_entropy(prd_raw, grd.float()))
+        self.log(f"{prefix}/val/proc/loss", F.binary_cross_entropy(prd_proc, grd.float()))
 
         for metric_name, metric in METRICS.items():
             for prd_name, prd in zip(["proc", "raw"], [prd_proc, prd_raw]):
                 cur_metrics = []
                 for thres in self.metrics_thres:
-                    cur_metrics.append(metric(prd, grd, threshold=thres.item()))
+                    cur_metrics.append(metric(prd, grd.int(), threshold=thres.item()))
                 metric_list = getattr(self, f"{prd_name}_{metric_name}")
                 metric_list.append(cur_metrics)
-
-        self.log(f"{prefix}/val/tot_loss", loss_dict["tot"], logger=True, batch_size=True)
-        thres_str = int(thres * 100)
     
         for dist in self.dists:
-            prd_real = lab_prd["dists"][dist]["bin"]
-            prd_real = prd_real * self._get_mids().to(prd_real.device)
-            prd_real = prd_real.sum(1).flatten()
+            prd_real = lab_prd["dists"][dist]
+            prd_real = self._dequantize(prd_real).flatten()
 
             grd_real = lab_grd["dists"][dist]["raw"]
-            grd_real = grd_real.clip(0, self.bins.max())
+            grd_real = grd_real.clip(self.bin_min, self.bin_max)
             grd_real = grd_real.flatten()
 
             idxs = ~grd_real.isnan()
@@ -200,18 +209,10 @@ class KirigamiModule(pl.LightningModule):
                 logger=True, batch_size=True)
             self.log(f"transfer/val/{dist}_mae", mae_obj, on_epoch=True,
                 logger=True, batch_size=True)
-            self.log(f"transfer/val/{dist}_bin_loss", loss_dict[dist]["bin"],
+            self.log(f"transfer/val/{dist}_bin_loss", loss_dict["dists"][dist],
                 on_epoch=True, logger=True, batch_size=True)
             
         return loss_dict["tot"]
-
-
-    def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        feat, lab_grd = batch
-        lab_prd = self.model(feat)
-        lab_prd["con"] = self.post_proc(lab_prd["con"], feat,
-            torch.sum(lab_grd["con"] > 0).item() / 2)
-        return lab_prd, lab_grd
 
 
     def on_test_start(self):
@@ -241,8 +242,7 @@ class KirigamiModule(pl.LightningModule):
         for cutoff in tqdm(self.cutoffs): 
             mccs = torch.zeros(len(prd_grds), device=device)
             for i, (prd, grd) in enumerate(prd_grds):
-                mccs[i] = matthews_corrcoef(prd, grd, num_classes=2,
-                                            threshold=cutoff)
+                mccs[i] = binary_matthews_corrcoef(prd, grd, threshold=cutoff.item())
             mean_mcc = mccs.mean().item()
             mccs_all.append((cutoff, mean_mcc))
             if mean_mcc > best_mcc:
@@ -261,9 +261,11 @@ class KirigamiModule(pl.LightningModule):
 
         lab_prd = self.model(feat)
         lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
-
         loss_dict = self.crit(lab_prd, lab_grd)
-        test_mcc = self.test_mcc(lab_prd["con"], lab_grd["con"].int())
+
+        grd_con = lab_grd["con"]
+        grd_con[grd_con.isnan()] = 0.
+        test_mcc = self.test_mcc(lab_prd["con"], grd_con.int())
         test_f1 = self.test_f1(lab_prd["con"].flatten(), lab_grd["con"].int().flatten())
 
         prefix = "transfer" if self.transfer else "pre"
@@ -279,40 +281,35 @@ class KirigamiModule(pl.LightningModule):
         self.test_rows.append((dbn, test_mcc.item(), test_f1.item()))
 
 
-    def on_test_end(self):
+    def on_test_epoch_end(self):
         prefix = "transfer" if self.transfer else "pre"
         self.logger.log_table(key=f"{prefix}/test/scores", data=self.test_rows,
             columns=["dbn", "mcc", "f1"])
+        mccs = torch.tensor([row[1] for row in self.test_rows])
+        f1s = torch.tensor([row[2] for row in self.test_rows])
+        self.log(f"{prefix}/test/mcc_mean", mccs.mean().item())
+        self.log(f"{prefix}/test/mcc_median", mccs.median().item())
+        self.log(f"{prefix}/test/f1_mean", f1s.mean().item())
+        self.log(f"{prefix}/test/f1_median", f1s.median().item())
+
+
+    def predict_step(self, batch, batch_idx, dataloader_idx=0):
+        feat, lab_grd = batch
+        return self.model(feat)
 
 
     def configure_optimizers(self):
-        optimizer = self.optim(self.parameters(), lr=self.lr)
+        if self.optim is torch.optim.SGD:
+            optimizer = self.optim(self.parameters(), lr=self.lr, momentum=self.momentum)
+        else:
+            print("here")
+            optimizer = self.optim(self.parameters(), lr=self.lr)
         return optimizer
 
-
-    def _format_dist(self, prd, grd):
-        grd_vec = torch.triu(grd, diagonal=5)
-        prd_vec = torch.triu(prd, diagonal=5)   
-        prd_vec = prd_vec[~grd_vec.isnan()]
-        grd_vec = grd_vec[~grd_vec.isnan()]
-        return prd_vec, grd_vec
-
-
-    def _add_dists(self, dists, opt_types = "both", kernel_size = 5):
-        self.dists = dists
-        self.model[-1].dists = dists
-        for dist in dists:
-            head = ForkHead(self.hparams["n_channels"],
-                            len(self.hparams["bins"]),
-                            kernel_size, opt_types)
-            setattr(self.model[-1], dist, head)
-
     
-    def _get_mids(self):
-        mids_ = []
-        mids_.append(.5 * self.bins[0])
-        for i, val in enumerate(self.bins[:-1]):
-            mids_.append(.5 * (val + self.bins[i+1]))
-        mids = torch.tensor(mids_).reshape(1, -1, 1, 1)
-        return mids
+    def _dequantize(self, ipt):
+        idxs = ipt.argmax(-3).float()
+        opt = idxs * self.bin_step
+        opt += self.bin_min
+        return opt 
 

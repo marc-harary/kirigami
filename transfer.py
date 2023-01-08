@@ -1,6 +1,7 @@
 import sys
 import os
 from pathlib import Path
+import math
 
 import torch
 import torch.nn as nn
@@ -8,41 +9,16 @@ import torch.nn as nn
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.plugins.environments import SLURMEnvironment
-from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-# from pytorch_lightning.cli import LightningCLI
+from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, StochasticWeightAveraging
 
 from argparse import ArgumentParser
 
 import wandb
 
 from kirigami.data import DataModule
-from kirigami.fork import Fork
 from kirigami.loss import ForkLoss
 from kirigami.learner import KirigamiModule
-
-
-def densify(dset):
-    for row in dset:
-        for key, value in row.items():
-            if key == "dist":
-                for key, value in row["dists"].items():
-                    if row["dists"][key].is_sparse:
-                        row["dists"][key] = value.to_dense()
-            else:
-                if row[key].is_sparse:
-                    row[key] = row[key].to_dense()
-
-
-def filt_dset(dset, feats):
-    out = []
-    for row in dset:
-        out_row = {}
-        out_row["seq"] = row["seq"]
-        out_row["dssr"] = row["dssr"]
-        for feat in feats:
-            out_row[feat] = row[feat]
-        out.append(out_row)
-    return out
+from kirigami.resnet import ResNetParallel
 
 
 feat_choices = {"pf", "pfold", "petfold", "pfile", "rnafold", "prob_pair",
@@ -56,7 +32,7 @@ def main():
     parser.add_argument("--checkpoint", type=str, default=None)
     parser.add_argument("--sync", action="store_true")
 
-    parser.add_argument("--acc-grad", type=int, default=32)
+    parser.add_argument("--acc-grad", type=int, default=1)
     parser.add_argument("--prec", type=str, default="32")
     parser.add_argument("--amp", type=str, default="native")
 
@@ -74,27 +50,29 @@ def main():
     parser.add_argument("--kernel-sizes", type=int, nargs="+", default=[3, 5])
     parser.add_argument("--dilations", type=int, nargs="+", default=[1])
     parser.add_argument("--activation", type=str, default="ReLU")
-    parser.add_argument("--bins", type=str, default="torch.arange(2, 21, .5)")
+
+    parser.add_argument("--bin-step", type=float, default=1)
+    parser.add_argument("--bin-min", type=float, default=2.)
+    parser.add_argument("--bin-max", type=float, default=22.)
     parser.add_argument("--dist-types", type=str, choices=dist_choices, nargs="+", default=[])
 
     parser.add_argument("--con-weight", type=float, default=1.)
     parser.add_argument("--dist-weight", type=float, default=0.0)
     parser.add_argument("--pos-weight", type=float, default=0.5)
 
-    parser.add_argument("--pretrain-epochs", type=int, default=40)
-    parser.add_argument("--transfer-epochs", type=int, default=10000)
+    parser.add_argument("--post-proc", type=str, default="greedy")
+
+    parser.add_argument("--max-epochs", type=int, default=None)
     parser.add_argument("--lr", type=float, default=1e-3)
+    parser.add_argument("--momentum", type=float, default=0.9)
     parser.add_argument("--optim", type=str, default="Adam")
     parser.add_argument("--batch-size", type=int, default=1)
     
     args = parser.parse_args()
-
     if args.feats:
         args.feats = list(set(args.feats))
-
     if not args.sync:
         os.environ["WANDB_MODE"] = "offline"
-
     if args.prec.isdecimal():
         args.prec = int(args.prec) 
 
@@ -103,28 +81,39 @@ def main():
         "n_con_channels", "n_dist_blocks", "n_dist_channels", "kernel_sizes",
         "dropout", "activation", "dist_types", "dilations"]:
         model_kwargs[kwarg_name] = getattr(args, kwarg_name)
-    model_kwargs["n_bins"] = len(eval(args.bins)) 
-    
+    idx_min = math.floor(args.bin_min / args.bin_step + .5)
+    idx_max = math.floor(args.bin_max / args.bin_step + .5)
+    n_bins = idx_max - idx_min + 1
+    model_kwargs["n_bins"] = n_bins
+
     crit_kwargs = {}
     for kwarg_name in ["pos_weight", "con_weight"]:
         crit_kwargs[kwarg_name] = getattr(args, kwarg_name)
-        
-    bins = torch.arange(2, 21, .5)
     learner = KirigamiModule(model_kwargs=model_kwargs,
                              crit_kwargs=crit_kwargs,
+                             post_proc=args.post_proc,
                              lr=args.lr,
-                             bins=None,
+                             dists=args.dist_types,
+                             bin_min=args.bin_min,
+                             bin_max=args.bin_max,
+                             bin_step=args.bin_step,
                              optim=args.optim,
-                             transfer=False,
+                             momentum=args.momentum,
                              n_cutoffs=1000,
                              transfer=True)
-    
+    if args.checkpoint:
+        ckpt = torch.load(args.checkpoint, map_location=torch.device("cpu"))
+        learner.load_state_dict(ckpt["state_dict"], strict=False)
+
+
     data_path = Path("/gpfs/ysm/project/pyle/mah258/data-all")
     data_mod = DataModule(train_path=data_path / "TR1-all.pt",
                           val_path=data_path / "VL1-all.pt",
                           test_path=data_path / "TS1-all.pt", 
                           densify=False,
-                          bins=bins,
+                          bin_step=args.bin_step,
+                          bin_min=args.bin_min,
+                          bin_max=args.bin_max,
                           batch_size=args.batch_size,
                           dists=args.dist_types,
                           feats=args.feats)
@@ -132,14 +121,15 @@ def main():
     wandb_logger = WandbLogger(project="kirigami", log_model=True)
     wandb_logger.experiment.log_code(".")
 
-    mcc_checkpoint = ModelCheckpoint(monitor="pre/val/proc/mcc", mode="max",
+    mcc_checkpoint = ModelCheckpoint(monitor="transfer/val/proc/mcc", mode="max",
                                      verbose=True)
     last_checkpoint = ModelCheckpoint(save_last=True, verbose=True)
-    callbacks = [mcc_checkpoint, last_checkpoint]
+    swa = StochasticWeightAveraging(swa_lrs=1e-2)
+    callbacks = [mcc_checkpoint, last_checkpoint]#, swa]
 
     trainer = pl.Trainer(callbacks=callbacks,
                          max_time="01:23:00:00",
-                         # max_epochs=args.epochs,
+                         max_epochs=args.max_epochs,
                          logger=wandb_logger,
                          # auto_lr_find=True,
                          accelerator="auto",
@@ -147,7 +137,7 @@ def main():
                          # strategy=strategy,
                          precision=args.prec,  
                          amp_backend=args.amp,
-                         check_val_every_n_epoch=1,
+                         check_val_every_n_epoch=10,
                          # val_check_interval=.1,
                          accumulate_grad_batches=args.acc_grad)
 

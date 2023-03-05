@@ -1,0 +1,157 @@
+# pytorch_lightning==1.8.6
+seed_everything: null
+trainer:
+  logger:
+  - class_path: pytorch_lightning.loggers.WandbLogger
+    init_args:
+      name: null
+      save_dir: .
+      version: null
+      offline: false
+      dir: null
+      id: null
+      anonymous: null
+      project: kirigami
+      log_model: true
+      experiment: null
+      prefix: ''
+      job_type: null
+      config: null
+      entity: null
+      reinit: null
+      tags: null
+      group: null
+      notes: null
+      magic: null
+      config_exclude_keys: null
+      config_include_keys: null
+      mode: null
+      allow_val_change: null
+      resume: null
+      force: null
+      tensorboard: null
+      sync_tensorboard: null
+      monitor_gym: null
+      save_code: null
+      settings: null
+  enable_checkpointing: true
+  callbacks:
+  - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+    init_args:
+      dirpath: null
+      filename: null
+      monitor: pre/val/proc/mcc
+      verbose: true
+      save_last: null
+      save_top_k: 1
+      save_weights_only: false
+      mode: max
+      auto_insert_metric_name: true
+      every_n_train_steps: null
+      train_time_interval: null
+      every_n_epochs: null
+      save_on_train_epoch_end: null
+  - class_path: pytorch_lightning.callbacks.ModelCheckpoint
+    init_args:
+      dirpath: null
+      filename: null
+      monitor: null
+      verbose: true
+      save_last: true
+      save_top_k: 1
+      save_weights_only: false
+      mode: min
+      auto_insert_metric_name: true
+      every_n_train_steps: null
+      train_time_interval: null
+      every_n_epochs: null
+      save_on_train_epoch_end: null
+  default_root_dir: null
+  gradient_clip_val: null
+  gradient_clip_algorithm: null
+  num_nodes: 1
+  num_processes: null
+  devices: null
+  gpus: null
+  auto_select_gpus: false
+  tpu_cores: null
+  ipus: null
+  enable_progress_bar: true
+  overfit_batches: 0.0
+  track_grad_norm: -1
+  check_val_every_n_epoch: 5
+  fast_dev_run: false
+  accumulate_grad_batches: 32
+  max_epochs: null
+  min_epochs: null
+  max_steps: -1
+  min_steps: null
+  max_time: 01:23:00:00
+  limit_train_batches: null
+  limit_val_batches: null
+  limit_test_batches: null
+  limit_predict_batches: null
+  val_check_interval: null
+  log_every_n_steps: 50
+  accelerator: auto
+  strategy: null
+  sync_batchnorm: false
+  precision: 32
+  enable_model_summary: true
+  num_sanity_val_steps: 2
+  resume_from_checkpoint: null
+  profiler: null
+  benchmark: null
+  deterministic: null
+  reload_dataloaders_every_n_epochs: 0
+  auto_lr_find: false
+  replace_sampler_ddp: true
+  detect_anomaly: false
+  auto_scale_batch_size: false
+  plugins: null
+  amp_backend: native
+  amp_level: null
+  move_metrics_to_cpu: false
+  multiple_trainloader_mode: max_size_cycle
+  inference_mode: true
+model:
+  model_kwargs:
+    ipt_channels: 8
+    n_blocks: 4
+    n_channels: 32
+    kernel_sizes:
+    - 11
+    - 11
+    dilations:
+    - 1
+    - 1
+    activation: GELU
+    dropout: 0.5
+  crit_kwargs:
+    pos_weight: 0.5
+    con_weight: 1.0
+  transfer: false
+  optim: Adam
+  lr: 0.001
+  T_max: null
+  momentum: 0.9
+  bin_step: 1.0
+  bin_min: 2.0
+  bin_max: 22.0
+  dists: []
+  n_val_thres: 100
+  n_cutoffs: 1000
+  post_proc: greedy
+data:
+  train_path: /gpfs/ysm/project/pyle/mah258/data-all/TR1-all.pt
+  val_path: /gpfs/ysm/project/pyle/mah258/data-all/VL1-all.pt
+  test_path: /gpfs/ysm/project/pyle/mah258/data-all/TS1-all.pt
+  predict_path: null
+  batch_size: 1
+  bin_min: null
+  bin_max: null
+  bin_step: null
+  densify: false
+  dists: null
+  feats: null
+ckpt_path: null

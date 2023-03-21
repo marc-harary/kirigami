@@ -7,6 +7,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
+from torchvision.transforms import RandomCrop
+from torchvision.transforms.functional import crop
 
 
 class DataModule(pl.LightningDataModule):
@@ -16,11 +18,12 @@ class DataModule(pl.LightningDataModule):
     def __init__(self,
                  train_path: Path,
                  val_path: Path,
+                 test_path: Path = None,
+                 predict_path: Path = None,
                  batch_size: int = 1,
                  bin_min: float = None,
                  bin_max: float = None,
                  bin_step: float = None,
-                 test_path: Path = None,
                  densify = False,
                  dists = None,
                  feats = None):
@@ -28,6 +31,7 @@ class DataModule(pl.LightningDataModule):
         self.train_path = train_path
         self.val_path = val_path
         self.test_path = test_path
+        self.predict_path = predict_path
         if bin_min is not None:
             self.bin_min = bin_min
             self.bin_max = bin_max
@@ -36,13 +40,13 @@ class DataModule(pl.LightningDataModule):
             idx_max = math.floor(bin_max / bin_step + .5)
             self.n_bins = idx_max - idx_min + 1 
         self.feats = feats if feats is not None else []
-        self.dists = dists
+        self.dists = dists or []
         self.batch_size = batch_size
         self.densify = densify
 
         
     def setup(self, stage: str):
-        for subset in ["train", "val", "test"]:
+        for subset in ["train", "val", "test", "predict"]:
             path = getattr(self, subset + "_path")
             if path is None:
                 continue
@@ -74,6 +78,14 @@ class DataModule(pl.LightningDataModule):
                               collate_fn=self._collate_fn,
                               shuffle=False,
                               batch_size=1)
+
+
+    def predict_dataloader(self):
+            return DataLoader(self.predict_dataset,
+                              collate_fn=self._collate_fn,
+                              shuffle=False,
+                              batch_size=1)
+
 
     def _concat(self, fasta):
         out = fasta.unsqueeze(-1)
@@ -130,6 +142,7 @@ class DataModule(pl.LightningDataModule):
         b_size = len(batch)
         max_L = max([row["seq"].shape[-1] for row in batch])
         feat = torch.zeros(b_size, len(self.feats)+8, max_L, max_L)
+        # feat = torch.zeros(b_size, 8, max_L, max_L)
         lab = {}
         lab["con"] = torch.full((b_size, 1, max_L, max_L), torch.nan)
         lab["dists"] = {}
@@ -139,18 +152,20 @@ class DataModule(pl.LightningDataModule):
             diff = (max_L - L) / 2
             start, end = floor(diff), floor(diff) + L
             if row["seq"].is_sparse:
-                feat[i, :8, start:end, start:end] = self._concat(row["seq"]).to_dense()
-                for j, feat_name in enumerate(self.feats):
-                    feat[i, 8+j, start:end, start:end] = row[feat_name].to_dense()
+                feat[i, :8, start:end, start:end] = self._concat(row["seq"].to_dense())
+                # for j, feat_name in enumerate(self.feats):
+                #     feat[i, 8+j, start:end, start:end] = row[feat_name].to_dense()
+                #     feat[i, 8+j, start:end, start:end] = feat[i, 8+j, start:end, start:end] + feat[i, 8+j, start:end, start:end].transpose(-1, -2)
                 lab["con"][i, :, start:end, start:end] = row["dssr"].to_dense()
             else:
                 feat[i, :8, start:end, start:end] = self._concat(row["seq"])
                 for j, feat_name in enumerate(self.feats):
                     feat[i, 8+j, start:end, start:end] = row[feat_name]
+                    feat[i, 8+j, start:end, start:end] = feat[i, 8+j, start:end, start:end] + feat[i, 8+j, start:end, start:end].transpose(-1, -2)
                 lab["con"][i, :, start:end, start:end] = row["dssr"]
         diag = torch.arange(max_L)
         lab["con"][..., diag, diag] = torch.nan
-
+        
         for dist in self.dists:
             lab["dists"][dist] = {}
             lab["dists"][dist]["raw"] = torch.full((b_size, 1, max_L, max_L), torch.nan)
@@ -167,6 +182,13 @@ class DataModule(pl.LightningDataModule):
                 lab["dists"][dist]["raw"][i, 0, start:end, start:end] = dist_tensor
                 lab["dists"][dist]["bin"][i, :, start:end, start:end] = self._one_hot_bin(dist_tensor)
 
+        # params = RandomCrop.get_params(lab["con"], (32, 32))
+        # feat = crop(feat, *params)
+        # lab["con"] = crop(lab["con"], *params)
+        # for dist in self.dists:
+        #     lab["dists"][dist]["raw"] = crop(lab["dists"][dist]["raw"], *params)
+        #     lab["dists"][dist]["bin"] = crop(lab["dists"][dist]["bin"], *params)
+        
         return feat, lab
 
     

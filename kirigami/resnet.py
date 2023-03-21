@@ -9,6 +9,14 @@ from kirigami.post import Symmetrize
 from timm.models.layers import trunc_normal_, DropPath
 
 
+class Symmetrize(nn.Module):
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, ipt):
+        return (ipt + ipt.transpose(-1, -2)) / 2
+
+
 class ResNetBlock(nn.Module):
     def __init__(self,
                  p: float,
@@ -49,6 +57,7 @@ class ResNetBlock(nn.Module):
         out = self.norm2(out)
         out += ipt
         out = self.act2(out)
+        # out = 0.5 * (out + out.transpose(-1, -2))
         return out
 
     @staticmethod
@@ -57,7 +66,7 @@ class ResNetBlock(nn.Module):
 
 
 class ResNet(nn.Module):
-    def __init__(self, n_blocks, n_channels, kernel_sizes, dilations, activation, dropout=0.5):
+    def __init__(self, ipt_channels: int, n_blocks: int, n_channels: int, kernel_sizes: List[int], dilations: List[int], activation:str, dropout=0.5):
         super().__init__()
         if dilations is None:
             dilations = n_blocks * [1]
@@ -70,7 +79,7 @@ class ResNet(nn.Module):
         self.dilations = dilations
         self.activation = activation
         self.dropout = dropout
-        trunk_list = [nn.Conv2d(9, n_channels, kernel_size=1, padding=0),
+        trunk_list = [nn.Conv2d(ipt_channels, n_channels, kernel_size=1, padding=0),
                       getattr(nn, activation)()]
         for i in range(n_blocks):
             block = ResNetBlock(p=dropout,
@@ -81,6 +90,7 @@ class ResNet(nn.Module):
             trunk_list.append(block)
         trunk_list.append(nn.Conv2d(n_channels, 1, kernel_size=1))
         trunk_list.append(nn.Sigmoid())
+        trunk_list.append(Symmetrize())
         self.trunk = nn.Sequential(*trunk_list)
     
     def forward(self, ipt):
@@ -91,7 +101,7 @@ class ResNet(nn.Module):
 
 
 class ResNetParallel(nn.Module):
-    def __init__(self, n_trunk_blocks, n_trunk_channels,
+    def __init__(self, ipt_channels, n_trunk_blocks, n_trunk_channels,
                        n_con_blocks, n_con_channels,
                        dist_types, n_bins, n_dist_blocks, n_dist_channels,
                        kernel_sizes, dilations, activation, dropout):
@@ -102,7 +112,7 @@ class ResNetParallel(nn.Module):
             max_blocks = max(n_trunk_blocks, n_con_blocks, n_dist_blocks)
             num_cycles = ceil(2 * max_blocks / len(dilations))
             dilations = num_cycles * dilations
-        trunk_list = [nn.Conv2d(9, n_trunk_channels, kernel_size=1, padding=0),
+        trunk_list = [nn.Conv2d(ipt_channels, n_trunk_channels, kernel_size=1, padding=0),
                       getattr(nn, activation)()]
         for i in range(n_trunk_blocks):
             block = ResNetBlock(p=dropout,
@@ -170,54 +180,4 @@ class ResNetParallel(nn.Module):
                     dropout = resnet.dropout)
         model.load_state_dict(resnet.state_dict(), strict=False)
         return model
-
-
-class ConvNeXtBlock(nn.Module):
-    def __init__(self, dim, drop_path=0., layer_scale_init_value=1e-6):
-        super().__init__()
-        self.dwconv = nn.Conv2d(dim, dim, kernel_size=7, padding=3, groups=dim) # depthwise conv
-        self.norm = nn.LayerNorm(dim, eps=1e-6)
-        self.pwconv1 = nn.Linear(dim, 2 * dim) # pointwise/1x1 convs, implemented with linear layers
-        self.act = nn.GELU()
-        self.pwconv2 = nn.Linear(2 * dim, dim)
-        self.gamma = nn.Parameter(layer_scale_init_value * torch.ones((dim)), 
-                                    requires_grad=True) if layer_scale_init_value > 0 else None
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
-
-    def forward(self, x):
-        input = x
-        x = self.dwconv(x)
-        x = x.permute(0, 2, 3, 1) # (N, C, H, W) -> (N, H, W, C)
-        x = self.norm(x)
-        x = self.pwconv1(x)
-        x = self.act(x)
-        x = self.pwconv2(x)
-        if self.gamma is not None:
-            x = self.gamma * x
-        x = x.permute(0, 3, 1, 2) # (N, H, W, C) -> (N, C, H, W)
-
-        x = input + self.drop_path(x)
-        return x
-
-
-class ConvNeXt(nn.Module):
-    def __init__(self, n_blocks, n_channels, dropout=0.5):
-        super().__init__()
-        self.n_blocks = n_blocks
-        self.n_channels = n_channels
-        trunk_list = [nn.Conv2d(9, n_channels, kernel_size=1, padding=0),
-                      nn.GELU()]
-        for i in range(n_blocks):
-            block = ConvNeXtBlock(dim=n_channels,
-                                  drop_path=0.5)
-            trunk_list.append(block)
-        trunk_list.append(nn.Conv2d(n_channels, 1, kernel_size=1))
-        trunk_list.append(nn.Sigmoid())
-        self.trunk = nn.Sequential(*trunk_list)
-    
-    def forward(self, ipt):
-        out = {}
-        out["con"] = self.trunk(ipt) 
-        out["dists"] = {}
-        return out
 

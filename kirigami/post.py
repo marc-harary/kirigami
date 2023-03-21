@@ -54,11 +54,13 @@ class Greedy(nn.Module):
         self.remove_sharp = RemoveSharp()
         self.canonicalize = Canonicalize()
         
-    def forward(self, con, feat, ground_truth=torch.inf):
-        if self.training:
+    def forward(self, con, feat, ground_truth=torch.inf, sym_only=False):
+
+        con = self.symmetrize(con)
+
+        if self.training or sym_only:
             return con
         
-        con = self.symmetrize(con)
         con = self.remove_sharp(con)
         con = self.canonicalize(con, feat)
         con_ = con.squeeze()
@@ -120,29 +122,36 @@ class Blossom(nn.Module):
         self.remove_sharp = RemoveSharp()
         self.canonicalize = Canonicalize()
         
-    def forward(self, con, feat, ground_truth=torch.inf):
-        if self.training:
-            return self.symmetrize(con)
-        
+    def forward(self, con, feat, ground_truth=torch.inf, sym_only=False):
         con = self.symmetrize(con)
+
+        if self.training or sym_only:
+            return con
         con = self.remove_sharp(con)
         con = self.canonicalize(con, feat)
-        con_ = con.squeeze()
-        con_ = con_.cpu()
+
+        if torch.sum(con > 0) == 0:
+            return con
+
+        con_cpu = con.clone().cpu()
+        con_cpu = con_cpu.squeeze()
+        L = con_cpu.shape[-1]
 
         G = nx.Graph()
         edges = []
-        for i in range(con_.shape[0]):
-            for j in range(con_.shape[1]):
-                edges.append((i, j, con_[i, j]))
+        for i in range(L):
+            for j in range(L):
+                if con_cpu[i, j] > 0:
+                    edges.append((i, j, con_cpu[i, j]))
         G.add_weighted_edges_from(edges)
         edges_match = torch.tensor(list(nx.max_weight_matching(G)))
-        mask = torch.zeros_like(con_, dtype=bool)
-        mask[edges_match[:, 0], edges_match[:, 1]] = True
-        mask[edges_match[:, 1], edges_match[:, 0]] = True
-        con_[~mask] = 0.
-        con_ = con_.to(con.device)
-        con_ = con_.reshape_as(con)
 
-        return con_
+        mask = torch.zeros_like(con_cpu)
+        mask[edges_match[:, 0], edges_match[:, 1]] = 1
+        mask[edges_match[:, 1], edges_match[:, 0]] = 1
+        mask = mask.to(con.device)
+        mask = mask.reshape_as(con)
+        con = con * mask
+
+        return con
 

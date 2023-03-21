@@ -5,11 +5,23 @@ import re
 from collections import deque
 import numpy as np
 import torch
+import torch.nn.functional as F
 # import RNA
 
 import pyximport
 # pyximport.install(setup_args=dict(include_dirs=np.get_include()))
 # import nussinov
+
+import importlib.util
+import sys
+spec = importlib.util.spec_from_file_location("_RNA", "/ysm-gpfs/apps/software/ViennaRNA/2.4.11-foss-2018b-Python-3.7.0/lib/python3.7/site-packages/_RNA.cpython-37m-x86_64-linux-gnu.so")
+_RNA = importlib.util.module_from_spec(spec)
+sys.modules["_RNA"] = _RNA
+spec.loader.exec_module(_RNA)
+spec = importlib.util.spec_from_file_location("RNA", "/ysm-gpfs/apps/software/ViennaRNA/2.4.11-foss-2018b-Python-3.7.0/lib/python3.7/site-packages/RNA/__init__.py")
+RNA = importlib.util.module_from_spec(spec)
+sys.modules["RNA"] = RNA
+spec.loader.exec_module(RNA)
 
 
 PSEUDO_LEFT = "({[<" + string.ascii_uppercase
@@ -150,9 +162,9 @@ def embed_bpseq(path, ex_noncanon=False, ex_sharp=False):
                 continue
             con_idxs.append((ii, jj))
             con_idxs.append((jj, ii))
-    fasta = torch.zeros(4, len(seq), dtype=torch.uint8)
-    idxs = [BASES[char] for char in seq]
-    fasta[idxs, list(range(len(seq)))] = 1
+    # fasta = torch.zeros(4, len(seq), dtype=torch.uint8)
+    # idxs = [BASES[char] for char in seq]
+    # fasta[idxs, list(range(len(seq)))] = 1
     dbn = dict2db(con_idxs, len(seq))
     con = torch.zeros(len(seq), len(seq), dtype=torch.uint8)
     if len(con_idxs) > 0:
@@ -160,4 +172,34 @@ def embed_bpseq(path, ex_noncanon=False, ex_sharp=False):
         con[con_idxs_[:,0], con_idxs_[:,1]] = 1
         con[con_idxs_[:,1], con_idxs_[:,0]] = 1
     return con, seq, dbn
+
+
+def read_fasta(path):
+    with open(path) as f:
+        fasta = f.read().splitlines()[-1] 
+    return fasta
+
+
+def embed_fasta(fasta):
+    fasta_idxs = "ACGU"
+    idxs = torch.tensor([fasta_idxs.index(char) for char in fasta])
+    out = F.one_hot(idxs, num_classes=len(fasta_idxs)) 
+    return out.T
+
+
+def outer_concat(fasta):
+    out = fasta.unsqueeze(-1)
+    out = torch.cat(out.shape[-2] * [out], dim=-1)
+    out_t = out.transpose(-1, -2)
+    out = torch.cat([out, out_t], dim=-3)
+    out = out.unsqueeze(0)
+    return out
+
+
+def get_vienna_rna(fasta):
+    fc = RNA.fold_compound(fasta)    
+    fc.pf()
+    bpp = torch.tensor(fc.bpp())
+    bpp = bpp[:-1, :-1]
+    return bpp
 

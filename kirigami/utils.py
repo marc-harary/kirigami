@@ -203,3 +203,13 @@ def get_vienna_rna(fasta):
     bpp = bpp[:-1, :-1]
     return bpp
 
+
+def get_con_metrics(prd, grd, threshold):
+    mask = ~grd.isnan()
+    grd_flat = grd[mask].int()
+    prd_flat = prd[mask]
+    return dict(mcc=binary_matthews_corrcoef(prd_flat, grd_flat, threshold).item(),
+                f1=binary_f1_score(prd_flat, grd_flat, threshold).item(),
+                precision=binary_precision(prd_flat, grd_flat, threshold).item(),
+                recall=binary_recall(prd_flat, grd_flat, threshold).item())
+

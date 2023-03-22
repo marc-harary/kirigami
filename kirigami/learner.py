@@ -15,24 +15,21 @@ from pytorch_lightning.loggers import WandbLogger
 
 import torchmetrics
 from torchmetrics.functional import matthews_corrcoef
-from torchmetrics.functional import f1_score
-from torchmetrics import (MatthewsCorrCoef, F1Score, PrecisionRecallCurve,
-    Precision, Recall, PearsonCorrCoef, MeanAbsoluteError)
 from torchmetrics.functional.classification import * 
 
 from kirigami.resnet import ResNet, ResNetParallel
 from kirigami.post import Greedy, Dynamic, Symmetrize, RemoveSharp, Blossom
-from kirigami.utils import mat2db
+from kirigami.utils import mat2db, get_con_metrics
 from kirigami.loss import ForkLoss
 
 
 
 class KirigamiModule(pl.LightningModule):
 
-    self.metrics = dict(mcc=binary_matthews_corrcoef,
-                        f1=binary_f1_score,
-                        prec=binary_precision,
-                        rec=binary_recall) 
+    metrics = dict(mcc=binary_matthews_corrcoef,
+                   f1=binary_f1_score,
+                   prec=binary_precision,
+                   rec=binary_recall) 
     
     def __init__(self,
                  ipt_channels: int,
@@ -70,7 +67,7 @@ class KirigamiModule(pl.LightningModule):
         self.T_max = T_max
         self.optim = getattr(torch.optim, optim)
         self.momentum = momentum
-        self.prefix = "transfer" if self.transfer else "pre"
+        self.prefix = "transfer" if self.transfer else "pretrain"
         self.metrics_thres = torch.linspace(0, 1, n_val_thres)
         # build network backbone
         if self.transfer:
@@ -140,9 +137,8 @@ class KirigamiModule(pl.LightningModule):
 
 
     def on_validation_epoch_start(self):
-        for metric_name in self.metrics.keys():
-            for prd_name in ["proc", "raw"]:
-                setattr(self, f"{prd_name}_{metric_name}", [])
+        self.raw_validation_metrics = dict(mcc=[], f1=[], precision=[], recall=[])
+        self.proc_validation_metrics = dict(mcc=[], f1=[], precision=[], recall=[])
 
 
     def validation_step(self, batch, batch_idx):
@@ -150,26 +146,23 @@ class KirigamiModule(pl.LightningModule):
         feat, lab_grd = batch
         lab_prd = self.model(feat)
         prd_raw = self.post_proc(lab_prd["con"], feat, sym_only=True)
-        prd_proc = self.post_proc(lab_prd["con"], feat, sym_only=False)
-        # mask out nan's
-        grd = lab_grd["con"]
-        mask = ~grd.isnan()
-        grd = grd[mask]
-        prd_raw = prd_raw[mask]
-        prd_proc = prd_proc[mask]
+        prd_proc = lab_prd["con"] = self.post_proc(lab_prd["con"], feat, sym_only=False)
         # compute and log loss
         loss_dict = self.crit(lab_prd, lab_grd)
         self.log(f"{self.prefix}/val/tot_loss", loss_dict["tot"])
+        self.log(f"{self.prefix}/val/proc/loss", loss_dict["proc"])
+        # log metrics for post-processed prediction
+        for thres in self.metrics_thres:
+            metrics_dict = get_con_metrics(prd_proc, lab_grd["con"], thres.item())
+            for key, val in metrics_dict.items():
+                self.proc_validation_metrics[key].append(val)
+        # log metrics for raw prediction
         self.log(f"{self.prefix}/val/raw/loss", F.binary_cross_entropy(prd_raw, grd.float()))
-        self.log(f"{self.prefix}/val/proc/loss", F.binary_cross_entropy(prd_proc, grd.float()))
-        # log metrics for raw and post-processed
-        for metric_name, metric in self.metrics.items():
-            for prd_name, prd in zip(["proc", "raw"], [prd_proc, prd_raw]):
-                cur_metrics = []
-                for thres in self.metrics_thres:
-                    cur_metrics.append(metric(prd, grd.int(), threshold=thres.item()))
-                metric_list = getattr(self, f"{prd_name}_{metric_name}")
-                metric_list.append(cur_metrics)
+        for thres in self.metrics_thres:
+            metrics_dict = get_con_metrics(prd_raw, lab_grd["con"], thres.item())
+            for key, val in metrics_dict.items():
+                self.raw_validation_metrics[key].append(val)
+        
         # log distance metrics
         for dist in self.dists:
             self.log(f"{self.prefix}/val/{dist}_bin_loss", loss_dict["dists"][dist])
@@ -197,22 +190,21 @@ class KirigamiModule(pl.LightningModule):
 
     def on_validation_epoch_end(self):
         # compute sample-wise mean of all metrics
-        metrics = {}
-        for metric in self.metrics.keys():
-            column = getattr(self, f"proc_{metric}")
-            mean = torch.tensor(column).float().mean(0)
-            metrics[metric] = mean
+        mean_metrics = {}
+        for key, val in self.raw_validation_metrics.items():
+            mean = torch.tensor(val).float().mean(0)
+            metrics[key] = mean
         # update threshold via gridsearch for max MCC
-        idx = metrics["mcc"].argmax()
+        idx = mean_metrics["mcc"].argmax()
         self.threshold[0] = self.metrics_thres[idx]
         # log key metrics
-        self.log(f"{self.prefix}/val/proc/mcc", metrics["mcc"][idx], prog_bar=True)
         self.log(f"{self.prefix}/val/proc/threshold", self.threshold.item())
-        for key in ["f1", "prec", "rec"]:
+        self.log(f"{self.prefix}/val/proc/mcc", metrics["mcc"][idx], prog_bar=True)
+        for key in ["f1", "precision", "recall"]:
             self.log(f"{self.prefix}/val/proc/{key}", metrics[key][idx])
 
 
-    def on_test_start(self):
+    def on_test_epoch_start(self):
         # just need to initialize output table
         self.test_rows = []
         
@@ -221,22 +213,16 @@ class KirigamiModule(pl.LightningModule):
         # forward pass
         feat, lab_grd = batch
         lab_prd = self.model(feat)
-        prd = lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
-        grd = lab_grd["con"]
+        lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
         # compute and log loss
         loss_dict = self.crit(lab_prd, lab_grd)
         self.log(f"{self.prefix}/test/tot_loss", loss_dict["tot"])
         self.log(f"{self.prefix}/test/con_loss", loss_dict["con"])
-        # mask out nan's and compute metrics
-        mask = ~grd.isnan()
-        grd_flat = grd[mask].int()
-        prd_flat = prd[mask]
-        test_mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold=self.threshold.item())
-        test_f1 = binary_f1_score(prd_flat, grd_flat, threshold=self.threshold.item())
-        # convert to dbn and write row in table
+        # convert to dbn, compute metrics,  and write row in table
+        metrics_dict = get_con_metrics(lab_prd["con"], lab_grd["con"], threshold.item())
         prd[prd < self.threshold.item()] = 0
         dbn = mat2db(prd)
-        self.test_rows.append((dbn, test_mcc.item(), test_f1.item()))
+        self.test_rows.append((dbn, *metrics_dict.values()))
 
 
     def on_test_epoch_end(self):

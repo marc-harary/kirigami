@@ -15,82 +15,46 @@ from pytorch_lightning.loggers import WandbLogger
 
 import torchmetrics
 from torchmetrics.functional import matthews_corrcoef
-from torchmetrics.functional.classification import * 
+from torchmetrics.functional.classification import (binary_matthews_corrcoef,
+    binary_f1_score, binary_precision, binary_recall)
 
-from kirigami.resnet import ResNet, ResNetParallel
-from kirigami.post import Greedy, Dynamic, Symmetrize, RemoveSharp, Blossom
+from kirigami.layers import * #ResNet, ResNetParallel
+# from kirigami.post import Greedy, Dynamic, Symmetrize, RemoveSharp, Blossom
 from kirigami.utils import mat2db, get_con_metrics
-from kirigami.loss import ForkLoss
+# from kirigami.loss import ForkLoss
 
 
 
 class KirigamiModule(pl.LightningModule):
 
-    metrics = dict(mcc=binary_matthews_corrcoef,
-                   f1=binary_f1_score,
-                   prec=binary_precision,
-                   rec=binary_recall) 
+    grid = torch.linspace(0, 1, 100)
     
     def __init__(self,
-                 ipt_channels: int,
                  n_blocks: int,
                  n_channels: int,
                  kernel_sizes: Tuple[int, int], 
                  dilations: Tuple[int, int],
                  activation: str,
                  dropout: float,
-                 pos_weight: float,
-                 con_weight: float,
-                 transfer: bool,
                  optim: str,
                  lr: float,
-                 T_max: int = None,
-                 momentum: float = 0.9,
-                 bin_step: float = torch.nan,
-                 bin_min: float = torch.nan,
-                 bin_max: float = torch.nan,
-                 dists: list = None,
-                 n_val_thres: int = 100, 
-                 n_cutoffs: int = 1000,
                  post_proc: str = "greedy"):
 
         super().__init__()
         # non-trainable hyperparameters
-        self.bin_step  = torch.nn.Parameter(torch.tensor([bin_step]), requires_grad=False)
-        self.bin_min   = torch.nn.Parameter(torch.tensor([bin_min]),  requires_grad=False)
-        self.bin_max   = torch.nn.Parameter(torch.tensor([bin_max]),  requires_grad=False)
-        self.threshold = torch.nn.Parameter(torch.tensor([0.]),       requires_grad=False) # dummy value
+        self.threshold = torch.nn.Parameter(torch.tensor([0.]), requires_grad=False) # dummy value
         # training parameters
-        self.dists = [] if not dists else dists
-        self.transfer = transfer
-        self.lr = lr
-        self.T_max = T_max
         self.optim = getattr(torch.optim, optim)
-        self.momentum = momentum
-        self.prefix = "transfer" if self.transfer else "pretrain"
-        self.metrics_thres = torch.linspace(0, 1, n_val_thres)
+        self.lr = lr
         # build network backbone
-        if self.transfer:
-            self.model = ResNetParallel(ipt_channels=ipt_channels,
-                                        n_blocks=n_blocks,
-                                        n_channels=n_channels,
-                                        kernel_sizes=kernel_sizes,
-                                        dilations=dilations,
-                                        activation=activation,
-                                        dropout=dropout)
-            for dist in self.dist_types:
-                setattr(self, f"val_{dist}_pcc", PearsonCorrCoef())
-                setattr(self, f"val_{dist}_mae", MeanAbsoluteError())
-        else:
-            self.model = ResNet(ipt_channels=ipt_channels,
-                                n_blocks=n_blocks,
-                                n_channels=n_channels,
-                                kernel_sizes=kernel_sizes,
-                                dilations=dilations,
-                                activation=activation,
-                                dropout=dropout)
+        self.model = ResNet(n_blocks=n_blocks,
+                            n_channels=n_channels,
+                            kernel_sizes=kernel_sizes,
+                            dilations=dilations,
+                            activation=activation,
+                            dropout=dropout)
         # initialize criterion
-        self.crit = ForkLoss(pos_weight=pos_weight, con_weight=con_weight)
+        self.crit = nn.BCELoss()
         # initialize post-processing module
         if post_proc == "greedy":
             self.post_proc = Greedy()
@@ -105,15 +69,8 @@ class KirigamiModule(pl.LightningModule):
 
 
     def configure_optimizers(self):
-        if self.optim is torch.optim.SGD:
-            optimizer = self.optim(self.parameters(), lr=self.lr, momentum=self.momentum)
-        else:
-            optimizer = self.optim(self.parameters(), lr=self.lr)
-        if self.T_max is not None:
-            scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=self.T_max)
-            return [optimzer], [scheduler]
-        else:
-            return optimizer
+        optimizer = self.optim(self.parameters(), lr=self.lr)#r, momentum=self.momentum)
+        return optimizer
 
 
     def on_fit_start(self):
@@ -123,85 +80,55 @@ class KirigamiModule(pl.LightningModule):
 
 
     def training_step(self, batch, batch_idx):
-        # forward pass and compute loss
-        feat, lab_grd = batch
-        lab_prd = self.model(feat)
-        lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
-        loss_dict = self.crit(lab_prd, lab_grd)
-        # log training metrics 
-        self.log(f"{self.prefix}/train/tot_loss", loss_dict["tot"])
-        self.log(f"{self.prefix}/train/con_loss", loss_dict["con"])
-        for dist in self.dists:
-            self.log(f"{self.prefix}/train/{dist}_bin_loss", loss_dict["dists"][dist])
-        return loss_dict["tot"]
+        feat, grd = batch
+        prd = self.model(feat)
+        prd = self.post_proc(prd, feat)
+        loss = self.crit(prd, grd)
+        self.log("train/loss", loss)
+        return loss
 
 
     def on_validation_epoch_start(self):
-        self.raw_validation_metrics = dict(mcc=[], f1=[], precision=[], recall=[])
-        self.proc_validation_metrics = dict(mcc=[], f1=[], precision=[], recall=[])
+        self.raw_val_metrics = dict(mcc=torch.zeros_like(self.grid),
+                                    f1=torch.zeros_like(self.grid),
+                                    precision=torch.zeros_like(self.grid),
+                                    recall=torch.zeros_like(self.grid))
+        self.proc_val_metrics = dict(mcc=torch.zeros_like(self.grid),
+                                     f1=torch.zeros_like(self.grid),
+                                     precision=torch.zeros_like(self.grid),
+                                     recall=torch.zeros_like(self.grid))
 
 
     def validation_step(self, batch, batch_idx):
         # forward pass
-        feat, lab_grd = batch
-        lab_prd = self.model(feat)
-        prd_raw = self.post_proc(lab_prd["con"], feat, sym_only=True)
-        prd_proc = lab_prd["con"] = self.post_proc(lab_prd["con"], feat, sym_only=False)
+        feat, grd = batch
+        prd = self.model(feat)
+        prd_raw = self.post_proc(prd, feat, sym_only=True)
+        prd_proc = self.post_proc(prd, feat, sym_only=False)
         # compute and log loss
-        loss_dict = self.crit(lab_prd, lab_grd)
-        self.log(f"{self.prefix}/val/tot_loss", loss_dict["tot"])
-        self.log(f"{self.prefix}/val/proc/loss", loss_dict["proc"])
-        # log metrics for post-processed prediction
-        for thres in self.metrics_thres:
-            metrics_dict = get_con_metrics(prd_proc, lab_grd["con"], thres.item())
-            for key, val in metrics_dict.items():
-                self.proc_validation_metrics[key].append(val)
-        # log metrics for raw prediction
-        self.log(f"{self.prefix}/val/raw/loss", F.binary_cross_entropy(prd_raw, grd.float()))
-        for thres in self.metrics_thres:
-            metrics_dict = get_con_metrics(prd_raw, lab_grd["con"], thres.item())
-            for key, val in metrics_dict.items():
-                self.raw_validation_metrics[key].append(val)
-        
-        # log distance metrics
-        for dist in self.dists:
-            self.log(f"{self.prefix}/val/{dist}_bin_loss", loss_dict["dists"][dist])
-            # convert predicted to real-valued distance
-            prd_real = lab_prd["dists"][dist]
-            prd_real = self._dequantize(prd_real).flatten()
-            # preprocess real-valued ground truth
-            grd_real = lab_grd["dists"][dist]["raw"]
-            grd_real = grd_real.clip(self.bin_min, self.bin_max)
-            grd_real = grd_real.flatten()
-            # mask nan's
-            idxs = ~grd_real.isnan()
-            prd_real = prd_real[idxs]
-            grd_real = grd_real[idxs]
-            # log PCC
-            pcc_obj = getattr(self, f"val_{dist}_pcc")(prd_real, grd_real)
-            pcc_obj(prd_real, grd_real)
-            self.log(f"{self.prefix}/val/{dist}_pcc", pcc_obj)
-            # log MAE
-            mae_obj = getattr(self, f"val_{dist}_mae")
-            mae_obj(prd_real, grd_real)
-            self.log(f"{self.prefix}/val/{dist}_mae", mae_obj)
-        return loss_dict["tot"]
+        loss = self.crit(prd_proc, grd)
+        self.log("val/loss", loss)
+        self.log("val/raw/loss", self.crit(prd_raw, grd.float()))
+        # log metrics
+        for i, thres in enumerate(self.grid):
+            proc_metrics = get_con_metrics(prd_proc, grd, thres.item())
+            for key, val in proc_metrics.items():
+                self.proc_val_metrics[key][i] += val
+            raw_metrics = get_con_metrics(prd_raw, grd, thres.item())
+            for key, val in raw_metrics.items():
+                self.raw_val_metrics[key][i] += val
+        return loss
 
 
     def on_validation_epoch_end(self):
-        # compute sample-wise mean of all metrics
-        mean_metrics = {}
-        for key, val in self.raw_validation_metrics.items():
-            mean = torch.tensor(val).float().mean(0)
-            metrics[key] = mean
         # update threshold via gridsearch for max MCC
-        idx = mean_metrics["mcc"].argmax()
-        self.threshold[0] = self.metrics_thres[idx]
+        idx = self.proc_val_metrics["mcc"].argmax()
+        self.threshold[0] = self.grid[idx]
         # log key metrics
-        self.log(f"{self.prefix}/val/proc/threshold", self.threshold.item())
-        self.log(f"{self.prefix}/val/proc/mcc", metrics["mcc"][idx], prog_bar=True)
-        for key in ["f1", "precision", "recall"]:
-            self.log(f"{self.prefix}/val/proc/{key}", metrics[key][idx])
+        self.log("val/proc/threshold", self.threshold.item())
+        for key in ["mcc", "f1", "precision", "recall"]:
+            self.log(f"val/proc/{key}", self.proc_val_metrics[key][idx],
+                     prog_bar=(key=="mcc"))
 
 
     def on_test_epoch_start(self):
@@ -211,13 +138,12 @@ class KirigamiModule(pl.LightningModule):
 
     def test_step(self, batch, batch_idx):
         # forward pass
-        feat, lab_grd = batch
-        lab_prd = self.model(feat)
-        lab_prd["con"] = self.post_proc(lab_prd["con"], feat)
+        feat, grd = batch
+        prd = self.model(feat)
+        prd = self.post_proc(prd, feat)
         # compute and log loss
-        loss_dict = self.crit(lab_prd, lab_grd)
-        self.log(f"{self.prefix}/test/tot_loss", loss_dict["tot"])
-        self.log(f"{self.prefix}/test/con_loss", loss_dict["con"])
+        loss = self.crit(prd, grd)
+        self.log("test/loss", loss)
         # convert to dbn, compute metrics,  and write row in table
         metrics_dict = get_con_metrics(lab_prd["con"], lab_grd["con"], threshold.item())
         prd[prd < self.threshold.item()] = 0
@@ -227,16 +153,16 @@ class KirigamiModule(pl.LightningModule):
 
     def on_test_epoch_end(self):
         # log full output table all at once
-        self.logger.log_table(key=f"{self.prefix}/test/scores",
+        self.logger.log_table(key="test/scores",
                               data=self.test_rows,
                               columns=["dbn", "mcc", "f1"])
         # compute and log aggregate statistics for ease of vieiwing
         mccs = torch.tensor([row[1] for row in self.test_rows])
         f1s = torch.tensor([row[2] for row in self.test_rows])
-        self.log(f"{self.prefix}/test/mcc_mean", mccs.mean().item())
-        self.log(f"{self.prefix}/test/mcc_median", mccs.median().item())
-        self.log(f"{self.prefix}/test/f1_mean", f1s.mean().item())
-        self.log(f"{self.prefix}/test/f1_median", f1s.median().item())
+        self.log("test/mcc_mean", mccs.mean().item())
+        self.log("test/mcc_median", mccs.median().item())
+        self.log("test/f1_mean", f1s.mean().item())
+        self.log("test/f1_median", f1s.median().item())
 
 
     def forward(self, ipt, post_proc=True):
@@ -251,11 +177,4 @@ class KirigamiModule(pl.LightningModule):
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         feat, lab_grd = batch
         return self.model(feat)
-
-
-    def _dequantize(self, ipt):
-        idxs = ipt.argmax(-3).float()
-        opt = idxs * self.bin_step
-        opt += self.bin_min
-        return opt 
 

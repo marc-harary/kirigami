@@ -6,22 +6,24 @@ from collections import deque
 import numpy as np
 import torch
 import torch.nn.functional as F
+from torchmetrics.functional.classification import (binary_matthews_corrcoef,
+    binary_f1_score, binary_precision, binary_recall)
 # import RNA
 
 import pyximport
 # pyximport.install(setup_args=dict(include_dirs=np.get_include()))
 # import nussinov
 
-import importlib.util
-import sys
-spec = importlib.util.spec_from_file_location("_RNA", "/ysm-gpfs/apps/software/ViennaRNA/2.4.11-foss-2018b-Python-3.7.0/lib/python3.7/site-packages/_RNA.cpython-37m-x86_64-linux-gnu.so")
-_RNA = importlib.util.module_from_spec(spec)
-sys.modules["_RNA"] = _RNA
-spec.loader.exec_module(_RNA)
-spec = importlib.util.spec_from_file_location("RNA", "/ysm-gpfs/apps/software/ViennaRNA/2.4.11-foss-2018b-Python-3.7.0/lib/python3.7/site-packages/RNA/__init__.py")
-RNA = importlib.util.module_from_spec(spec)
-sys.modules["RNA"] = RNA
-spec.loader.exec_module(RNA)
+# import importlib.util
+# import sys
+# spec = importlib.util.spec_from_file_location("_RNA", "/ysm-gpfs/apps/software/ViennaRNA/2.4.11-foss-2018b-Python-3.7.0/lib/python3.7/site-packages/_RNA.cpython-37m-x86_64-linux-gnu.so")
+# _RNA = importlib.util.module_from_spec(spec)
+# sys.modules["_RNA"] = _RNA
+# spec.loader.exec_module(_RNA)
+# spec = importlib.util.spec_from_file_location("RNA", "/ysm-gpfs/apps/software/ViennaRNA/2.4.11-foss-2018b-Python-3.7.0/lib/python3.7/site-packages/RNA/__init__.py")
+# RNA = importlib.util.module_from_spec(spec)
+# sys.modules["RNA"] = RNA
+# spec.loader.exec_module(RNA)
 
 
 PSEUDO_LEFT = "({[<" + string.ascii_uppercase
@@ -31,14 +33,14 @@ COLORS = dict(A="red", C="green", G="blue", U="yellow")
 
 def apply_cons(dbn, seq_str):
     CANON = {"AU", "UA", "CG", "GC", "UG", "GU"}
-    idxs = parsedb(dbn, return_idxs=True)
+    idxs = parsedbn(dbn, return_idxs=True)
     idxs_kept = []
     for pair in idxs:
         i, j = min(pair), max(pair)
         if seq_str[i] + seq_str[j] in CANON and j - i >= 4:
             idxs_kept.append((i, j))
     out_dbn = dict2db(idxs_kept, len(seq_str))
-    return out_dbn, parsedb(out_dbn)
+    return out_dbn, parsedbn(out_dbn)
 
 
 def build_table(pair_dict, L):
@@ -80,7 +82,7 @@ def trace_table(memo, pairs = None, i = None, j = None):
     return pairs
 
 
-def parsedb(dbn, return_idxs=False, split_pseudo=False):
+def parsedbn(dbn, return_idxs=False, split_pseudo=False):
     stacks = tuple((deque() for _ in PSEUDO_LEFT))
     nest_idxs = []
     pseudo_idxs = []
@@ -181,10 +183,21 @@ def read_fasta(path):
 
 
 def embed_fasta(fasta):
-    fasta_idxs = "ACGU"
-    idxs = torch.tensor([fasta_idxs.index(char) for char in fasta])
-    out = F.one_hot(idxs, num_classes=len(fasta_idxs)) 
-    return out.T
+    base_dict = dict(A=torch.tensor([1,0,0,0]),
+                     C=torch.tensor([0,1,0,0]),
+                     G=torch.tensor([0,0,1,0]),
+                     U=torch.tensor([0,0,0,1]),
+                     N=torch.tensor([.25,.25,.25,.25]),
+                     D=torch.tensor([1/3,0,1/3,1/3]),
+                     W=torch.tensor([0.5,0,0,0.5]),
+                     V=torch.tensor([1/3,1/3,1/3,0]),
+                     K=torch.tensor([0,0,0.5,0.5]),
+                     R=torch.tensor([.5,0,.5,0]),
+                     M=torch.tensor([.5,.5,0,0]),
+                     S=torch.tensor([0,.5,.5,0]),
+                     Y=torch.tensor([0,.5,0,.5]))
+    opt = torch.stack([base_dict[char] for char in fasta], axis=1)
+    return opt
 
 
 def outer_concat(fasta):
@@ -212,4 +225,19 @@ def get_con_metrics(prd, grd, threshold):
                 f1=binary_f1_score(prd_flat, grd_flat, threshold).item(),
                 precision=binary_precision(prd_flat, grd_flat, threshold).item(),
                 recall=binary_recall(prd_flat, grd_flat, threshold).item())
+
+def embed_st(path):
+    name = ""
+    fasta = ""
+    dbn = ""
+    with open(path, "r") as f:
+        line = f.readline()
+        name = line.split()[-1]
+        while line.startswith("#"):
+            line = f.readline()
+        fasta = line.upper().strip()
+        dbn = f.readline().strip()
+    con = parsedbn(dbn)
+    fasta = embed_fasta(fasta)  
+    return fasta, con
 

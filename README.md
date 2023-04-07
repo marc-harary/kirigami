@@ -8,10 +8,25 @@ From [Wikipedia](https://en.wikipedia.org/wiki/Kirigami):
 
 The Kirigami pipeline both folds RNA molecules via a fully convolutional neural network (FCN) and uses Nussinov-style dynamic programming to recursively cut them into subsequences for pre- and post-processing.
 
-All code is written idiomatically according to the [Lightning](https://www.pytorchlightning.ai) specification for PyTorch.
+## Installation
+No specific setup is necessary; the small number of packages required are in listed `requirements.txt`. For example, one might run:
+```bash
+$ pip -m venv kirigami-venv
+$ source kirigami-venv/bin/activate
+$ pip install -r requirements.txt
+$ python run.py --help
+```
+
+## Overview
+
+For ease of use and reproducibility, all scripts are written idiomatically according to the [Lightning](https://www.pytorchlightning.ai) specification for PyTorch with as little application-specific code as possible. The three principal classes compromising the module are:
+
+1. `kirigami.layers.ResNet`: A standard `torch.nn.Module` comprising the main model;
+2. `kirigami.data.DataModule`: Used for downloading, embedding, pickling, and loading samples;
+3. `kirigami.data.KirigamiModule`: Wraps `kirigami.layers.ResNet` and includes a small number of hooks for reproducible logging, checkpointing, loops for training, etc. Please see the [documentation](https://lightning.ai/docs/pytorch/stable/common/lightning_module.html) for the main API.
 
 ```bash
-kirigami-swp
+kirigami
 ├── __init__.py
 ├── data.py
 ├── layers.py
@@ -52,17 +67,18 @@ subcommands:
 Kirigami consists of an extremely simple residual neural network (RNN) architecture that can be found in `kirigami/layers.py`, with primary network API being `kirigami.layers.ResNet`. The hyperparameters for the model are as follows:
 
 ```bash
---model.n_blocks N_BLOCKS
-		(required, type: int)
---model.n_channels N_CHANNELS
-		(required, type: int)
---model.kernel_sizes [ITEM,...]
-		(required, type: Tuple[int, int])
---model.dilations [ITEM,...]
-		(required, type: Tuple[int, int])
---model.activation ACTIVATION
-		(required, type: str)
---model.dropout DROPOUT
+<class 'kirigami.learner.KirigamiModule'>:
+  --model.n_blocks N_BLOCKS
+  		(required, type: int)
+  --model.n_channels N_CHANNELS
+  		(required, type: int)
+  --model.kernel_sizes [ITEM,...]
+  		(required, type: Tuple[int, int])
+  --model.dilations [ITEM,...]
+  		(required, type: Tuple[int, int])
+  --model.activation ACTIVATION
+  		(required, type: str)
+  --model.dropout DROPOUT
 ```
 
 These are:

@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from math import log, ceil
-from kirigami.post import Symmetrize
 # from timm.models.layers import trunc_normal_, DropPath
 
 

@@ -108,6 +108,11 @@ class DataModule(pl.LightningDataModule):
     def _collate_fn(self, batch):
         batch, = batch
         fasta, con = batch
+        # length = fasta.shape[-1]
+        # fasta = torch.kron(fasta, fasta)
+        # fasta = fasta.reshape(length, length, 16)
+        # fasta = fasta.transpose(-1, 0)
+        # fasta = fasta[None, ...]
         fasta = fasta[..., None]
         fasta = torch.cat(fasta.shape[-2] * [fasta], dim=-1)
         fasta_t = fasta.transpose(-1, -2)
@@ -115,5 +120,4 @@ class DataModule(pl.LightningDataModule):
         fasta = fasta[None, ...]
         con = con[None, None, ...]
         return fasta.float(), con.float()
-        
-        
+

@@ -19,9 +19,7 @@ from torchmetrics.functional.classification import (binary_matthews_corrcoef,
     binary_f1_score, binary_precision, binary_recall)
 
 from kirigami.layers import * #ResNet, ResNetParallel
-# from kirigami.post import Greedy, Dynamic, Symmetrize, RemoveSharp, Blossom
 from kirigami.utils import mat2db, get_con_metrics
-# from kirigami.loss import ForkLoss
 
 
 
@@ -97,6 +95,7 @@ class KirigamiModule(pl.LightningModule):
                                      f1=torch.zeros_like(self.grid),
                                      precision=torch.zeros_like(self.grid),
                                      recall=torch.zeros_like(self.grid))
+        self.n_val = 0
 
 
     def validation_step(self, batch, batch_idx):
@@ -117,6 +116,7 @@ class KirigamiModule(pl.LightningModule):
             raw_metrics = get_con_metrics(prd_raw, grd, thres.item())
             for key, val in raw_metrics.items():
                 self.raw_val_metrics[key][i] += val
+        self.n_val += 1
         return loss
 
 
@@ -127,7 +127,7 @@ class KirigamiModule(pl.LightningModule):
         # log key metrics
         self.log("val/proc/threshold", self.threshold.item())
         for key in ["mcc", "f1", "precision", "recall"]:
-            self.log(f"val/proc/{key}", self.proc_val_metrics[key][idx],
+            self.log(f"val/proc/{key}", self.proc_val_metrics[key][idx] / self.n_val,
                      prog_bar=(key=="mcc"))
 
 
@@ -144,8 +144,8 @@ class KirigamiModule(pl.LightningModule):
         # compute and log loss
         loss = self.crit(prd, grd)
         self.log("test/loss", loss)
-        # convert to dbn, compute metrics,  and write row in table
-        metrics_dict = get_con_metrics(lab_prd["con"], lab_grd["con"], threshold.item())
+        # convert to dbn, compute metrics, and write row in table
+        metrics_dict = get_con_metrics(prd, grd, self.threshold.item())
         prd[prd < self.threshold.item()] = 0
         dbn = mat2db(prd)
         self.test_rows.append((dbn, *metrics_dict.values()))
@@ -155,8 +155,8 @@ class KirigamiModule(pl.LightningModule):
         # log full output table all at once
         self.logger.log_table(key="test/scores",
                               data=self.test_rows,
-                              columns=["dbn", "mcc", "f1"])
-        # compute and log aggregate statistics for ease of vieiwing
+                              columns=["dbn", "mcc", "f1", "precision", "recall"])
+        # compute and log aggregate statistics for ease of viewing
         mccs = torch.tensor([row[1] for row in self.test_rows])
         f1s = torch.tensor([row[2] for row in self.test_rows])
         self.log("test/mcc_mean", mccs.mean().item())

@@ -9,17 +9,16 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 import zipfile
+
 # import wget
 from kirigami.utils import embed_st
 
 
-
 class DataModule(pl.LightningDataModule):
-    
     BPRNA_URL = "https://www.dropbox.com/s/w3kc4iro8ztbf3m/bpRNA_dataset.zip"
     DATA_NAME = Path("bpRNA_dataset")
 
-    def __init__(self, data_dir = "./"):
+    def __init__(self, data_dir="./"):
         super().__init__()
         self.data_dir = Path(data_dir)
 
@@ -33,12 +32,11 @@ class DataModule(pl.LightningDataModule):
         #     self.bin_step = bin_step
         #     idx_min = math.floor(bin_min / bin_step + .5)
         #     idx_max = math.floor(bin_max / bin_step + .5)
-        #     self.n_bins = idx_max - idx_min + 1 
+        #     self.n_bins = idx_max - idx_min + 1
         # self.feats = feats if feats is not None else []
         # self.dists = dists or []
         # self.batch_size = batch_size
         # self.densify = densify
-
 
     def prepare_data(self):
         return
@@ -68,45 +66,41 @@ class DataModule(pl.LightningDataModule):
         files.sort()
         test_list = [embed_st(file) for file in tqdm(files)]
         torch.save(test_list, self.data_dir / "TS0.pt")
-         
 
     def setup(self, stage: str):
         self.train_dataset = torch.load("TR0.pt")
         self.val_dataset = torch.load("VL0.pt")
         self.test_dataset = torch.load("TS0.pt")
 
-
     def train_dataloader(self):
-        return DataLoader(self.train_dataset,
-                          collate_fn=self._collate_fn,
-                          shuffle=True,
-                          pin_memory=True,
-                          batch_size=1)
-
+        return DataLoader(
+            self.train_dataset,
+            collate_fn=self._collate_fn,
+            shuffle=True,
+            pin_memory=True,
+            batch_size=1,
+        )
 
     def val_dataloader(self):
-        return DataLoader(self.val_dataset,
-                          collate_fn=self._collate_fn,
-                          shuffle=False,
-                          batch_size=1)
-
+        return DataLoader(
+            self.val_dataset, collate_fn=self._collate_fn, shuffle=False, batch_size=1
+        )
 
     def test_dataloader(self):
-            return DataLoader(self.test_dataset,
-                              collate_fn=self._collate_fn,
-                              shuffle=False,
-                              batch_size=1)
-
+        return DataLoader(
+            self.test_dataset, collate_fn=self._collate_fn, shuffle=False, batch_size=1
+        )
 
     def predict_dataloader(self):
-            return DataLoader(self.predict_dataset,
-                              collate_fn=self._collate_fn,
-                              shuffle=False,
-                              batch_size=1)
-
+        return DataLoader(
+            self.predict_dataset,
+            collate_fn=self._collate_fn,
+            shuffle=False,
+            batch_size=1,
+        )
 
     def _collate_fn(self, batch):
-        batch, = batch
+        (batch,) = batch
         fasta, con = batch
         # length = fasta.shape[-1]
         # fasta = torch.kron(fasta, fasta)
@@ -120,4 +114,3 @@ class DataModule(pl.LightningDataModule):
         fasta = fasta[None, ...]
         con = con[None, None, ...]
         return fasta.float(), con.float()
-

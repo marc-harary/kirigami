@@ -15,42 +15,49 @@ from pytorch_lightning.loggers import WandbLogger
 
 import torchmetrics
 from torchmetrics.functional import matthews_corrcoef
-from torchmetrics.functional.classification import (binary_matthews_corrcoef,
-    binary_f1_score, binary_precision, binary_recall)
+from torchmetrics.functional.classification import (
+    binary_matthews_corrcoef,
+    binary_f1_score,
+    binary_precision,
+    binary_recall,
+)
 
-from kirigami.layers import * #ResNet, ResNetParallel
+from kirigami.layers import *  # ResNet, ResNetParallel
 from kirigami.utils import mat2db, get_con_metrics
 
 
-
 class KirigamiModule(pl.LightningModule):
-
     grid = torch.linspace(0, 1, 100)
-    
-    def __init__(self,
-                 n_blocks: int,
-                 n_channels: int,
-                 kernel_sizes: Tuple[int, int], 
-                 dilations: Tuple[int, int],
-                 activation: str,
-                 dropout: float,
-                 optim: str,
-                 lr: float,
-                 post_proc: str = "greedy"):
 
+    def __init__(
+        self,
+        n_blocks: int,
+        n_channels: int,
+        kernel_sizes: Tuple[int, int],
+        dilations: Tuple[int, int],
+        activation: str,
+        dropout: float,
+        optim: str,
+        lr: float,
+        post_proc: str = "greedy",
+    ):
         super().__init__()
         # non-trainable hyperparameters
-        self.threshold = torch.nn.Parameter(torch.tensor([0.]), requires_grad=False) # dummy value
+        self.threshold = torch.nn.Parameter(
+            torch.tensor([0.0]), requires_grad=False
+        )  # dummy value
         # training parameters
         self.optim = getattr(torch.optim, optim)
         self.lr = lr
         # build network backbone
-        self.model = ResNet(n_blocks=n_blocks,
-                            n_channels=n_channels,
-                            kernel_sizes=kernel_sizes,
-                            dilations=dilations,
-                            activation=activation,
-                            dropout=dropout)
+        self.model = ResNet(
+            n_blocks=n_blocks,
+            n_channels=n_channels,
+            kernel_sizes=kernel_sizes,
+            dilations=dilations,
+            activation=activation,
+            dropout=dropout,
+        )
         # initialize criterion
         self.crit = nn.BCELoss()
         # initialize post-processing module
@@ -65,17 +72,16 @@ class KirigamiModule(pl.LightningModule):
 
         self.save_hyperparameters()
 
-
     def configure_optimizers(self):
-        optimizer = self.optim(self.parameters(), lr=self.lr)#r, momentum=self.momentum)
+        optimizer = self.optim(
+            self.parameters(), lr=self.lr
+        )  # r, momentum=self.momentum)
         return optimizer
-
 
     def on_fit_start(self):
         # needed b/c LightningCLI doesn't automatically log code
         if isinstance(self.logger, WandbLogger):
             self.logger.experiment.log_code(".")
-
 
     def training_step(self, batch, batch_idx):
         feat, grd = batch
@@ -85,18 +91,20 @@ class KirigamiModule(pl.LightningModule):
         self.log("train/loss", loss)
         return loss
 
-
     def on_validation_epoch_start(self):
-        self.raw_val_metrics = dict(mcc=torch.zeros_like(self.grid),
-                                    f1=torch.zeros_like(self.grid),
-                                    precision=torch.zeros_like(self.grid),
-                                    recall=torch.zeros_like(self.grid))
-        self.proc_val_metrics = dict(mcc=torch.zeros_like(self.grid),
-                                     f1=torch.zeros_like(self.grid),
-                                     precision=torch.zeros_like(self.grid),
-                                     recall=torch.zeros_like(self.grid))
+        self.raw_val_metrics = dict(
+            mcc=torch.zeros_like(self.grid),
+            f1=torch.zeros_like(self.grid),
+            precision=torch.zeros_like(self.grid),
+            recall=torch.zeros_like(self.grid),
+        )
+        self.proc_val_metrics = dict(
+            mcc=torch.zeros_like(self.grid),
+            f1=torch.zeros_like(self.grid),
+            precision=torch.zeros_like(self.grid),
+            recall=torch.zeros_like(self.grid),
+        )
         self.n_val = 0
-
 
     def validation_step(self, batch, batch_idx):
         # forward pass
@@ -119,7 +127,6 @@ class KirigamiModule(pl.LightningModule):
         self.n_val += 1
         return loss
 
-
     def on_validation_epoch_end(self):
         # update threshold via gridsearch for max MCC
         idx = self.proc_val_metrics["mcc"].argmax()
@@ -127,14 +134,15 @@ class KirigamiModule(pl.LightningModule):
         # log key metrics
         self.log("val/proc/threshold", self.threshold.item())
         for key in ["mcc", "f1", "precision", "recall"]:
-            self.log(f"val/proc/{key}", self.proc_val_metrics[key][idx] / self.n_val,
-                     prog_bar=(key=="mcc"))
-
+            self.log(
+                f"val/proc/{key}",
+                self.proc_val_metrics[key][idx] / self.n_val,
+                prog_bar=(key == "mcc"),
+            )
 
     def on_test_epoch_start(self):
         # just need to initialize output table
         self.test_rows = []
-        
 
     def test_step(self, batch, batch_idx):
         # forward pass
@@ -150,12 +158,13 @@ class KirigamiModule(pl.LightningModule):
         dbn = mat2db(prd)
         self.test_rows.append((dbn, *metrics_dict.values()))
 
-
     def on_test_epoch_end(self):
         # log full output table all at once
-        self.logger.log_table(key="test/scores",
-                              data=self.test_rows,
-                              columns=["dbn", "mcc", "f1", "precision", "recall"])
+        self.logger.log_table(
+            key="test/scores",
+            data=self.test_rows,
+            columns=["dbn", "mcc", "f1", "precision", "recall"],
+        )
         # compute and log aggregate statistics for ease of viewing
         mccs = torch.tensor([row[1] for row in self.test_rows])
         f1s = torch.tensor([row[2] for row in self.test_rows])
@@ -163,7 +172,6 @@ class KirigamiModule(pl.LightningModule):
         self.log("test/mcc_median", mccs.median().item())
         self.log("test/f1_mean", f1s.mean().item())
         self.log("test/f1_median", f1s.median().item())
-
 
     def forward(self, ipt, post_proc=True):
         self.model.eval()
@@ -173,8 +181,6 @@ class KirigamiModule(pl.LightningModule):
             opt["con"] = self.post_proc(opt["con"], ipt)
         return opt
 
-
     def predict_step(self, batch, batch_idx, dataloader_idx=0):
         feat, lab_grd = batch
         return self.model(feat)
-

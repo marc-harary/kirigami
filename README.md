@@ -100,4 +100,5 @@ All data will be automatically downloaded from [Dropbox](https://www.dropbox.com
                         (type: Any, default: ./)
 ```
 
-Data used for training, validation, and testing are taken from the bpRNA database in the form of TR0, VL0, and TS0, respectively, as used by [SPOT-RNA](https://github.com/jaswindersingh2/SPOT-RNA), [MXfold2](https://github.com/mxfold/mxfold2), and [UFold](https://github.com/uci-cbcl/UFold). The `.st` files in the URL above were uploaded by the authors of SPOT-RNA.
+Data used for training, validation, and testing are taken from the [bpRNA](https://bprna.cgrb.oregonstate.edu/) database in the form of the standard TR0, VL0, and TS0 datasets used by [SPOT-RNA](https://github.com/jaswindersingh2/SPOT-RNA), [MXfold2](https://github.com/mxfold/mxfold2), and [UFold](https://github.com/uci-cbcl/UFold). Respectively, these contain 10,814, 1,300, and 1,305 non-redundant structures. The `.st` files in the URL above were uploaded by the authors of SPOT-RNA.
+

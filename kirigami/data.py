@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import *
 import os
 from math import ceil, floor
 import math
@@ -11,35 +12,35 @@ import pytorch_lightning as pl
 import zipfile
 
 # import wget
-from kirigami.utils import embed_st
+from kirigami.utils import embed_st, read_fasta, embed_fasta
 
 
 class DataModule(pl.LightningDataModule):
     BPRNA_URL = "https://www.dropbox.com/s/w3kc4iro8ztbf3m/bpRNA_dataset.zip"
     DATA_NAME = Path("bpRNA_dataset")
 
-    def __init__(self, data_dir="./"):
+    def __init__(
+        self,
+        data_dir: Optional[Path] = None,
+        predict_ipt_dir: Optional[Path] = None,
+        predict_opt_dir: Optional[Path] = None,
+    ):
         super().__init__()
-        self.data_dir = Path(data_dir)
 
-        # self.train_path = train_path
-        # self.val_path = val_path
-        # self.test_path = test_path
-        # self.predict_path = predict_path
-        # if bin_min is not None:
-        #     self.bin_min = bin_min
-        #     self.bin_max = bin_max
-        #     self.bin_step = bin_step
-        #     idx_min = math.floor(bin_min / bin_step + .5)
-        #     idx_max = math.floor(bin_max / bin_step + .5)
-        #     self.n_bins = idx_max - idx_min + 1
-        # self.feats = feats if feats is not None else []
-        # self.dists = dists or []
-        # self.batch_size = batch_size
-        # self.densify = densify
+        self.data_dir = data_dir or Path.cwd() / "data"
+        self.predict_ipt_dir = predict_ipt_dir or self.data_dir / "predict_ipt"
+        self.predict_opt_dir = predict_opt_dir or self.data_dir / "predict_opt"
+
+        self.data_dir.exists() or self.data_dir.mkdir()
+        self.predict_ipt_dir.exists() or self.predict_ipt_dir.mkdir()
+        self.predict_opt_dir.exists() or self.predict_opt_dir.mkdir()
+
+        self.train_path = self.data_dir / "TR0.pt"
+        self.val_path = self.data_dir / "VL0.pt"
+        self.test_path = self.data_dir / "TS0.pt"
+        self.predict_path = self.data_dir / "predict.pt"
 
     def prepare_data(self):
-        return
         # r = requests.get(self.BPRNA_URL, allow_redirects=True)
         # r = wget.download(self.BPRNA_URL)
         # f = open(self.data_dir / self.DATA_NAME.with_suffix(".zip"), "wb")
@@ -49,28 +50,50 @@ class DataModule(pl.LightningDataModule):
         # with zipfile.ZipFile(self.data_dir / self.DATA_NAME.with_suffix(".zip")) as f:
         #     f.extractall(self.DATA_NAME / self.data_dir)
 
-        train_dir = self.DATA_NAME / self.data_dir / "TR0"
-        files = list(train_dir.iterdir())
-        files.sort()
-        train_list = [embed_st(file) for file in tqdm(files)]
-        torch.save(train_list, self.data_dir / "TR0.pt")
+        if not self.train_path.exists():
+            train_dir = self.DATA_NAME / self.data_dir / "TR0"
+            files = list(train_dir.iterdir())
+            files.sort()
+            train_list = [embed_st(file) for file in tqdm(files)]
+            torch.save(train_list, self.train_path)
 
-        val_dir = self.DATA_NAME / self.data_dir / "VL0"
-        files = list(val_dir.iterdir())
-        files.sort()
-        val_list = [embed_st(file) for file in tqdm(files)]
-        torch.save(val_list, self.data_dir / "VL0.pt")
+        if not self.val_path.exists():
+            val_dir = self.DATA_NAME / self.data_dir / "VL0"
+            files = list(val_dir.iterdir())
+            files.sort()
+            val_list = [embed_st(file) for file in tqdm(files)]
+            torch.save(val_list, self.val_path)
 
-        test_dir = self.DATA_NAME / self.data_dir / "TS0"
-        files = list(test_dir.iterdir())
+        if not self.test_path.exists():
+            test_dir = self.DATA_NAME / self.data_dir / "TS0"
+            files = list(test_dir.iterdir())
+            files.sort()
+            test_list = [embed_st(file) for file in tqdm(files)]
+            torch.save(test_list, self.test_path)
+
+        files = list(self.predict_ipt_dir.iterdir())
         files.sort()
-        test_list = [embed_st(file) for file in tqdm(files)]
-        torch.save(test_list, self.data_dir / "TS0.pt")
+        mols, fastas, feats = [], [], []
+        for file in files:
+            mol = file.stem
+            fasta = read_fasta(file)
+            feat = (embed_fasta(fasta),)
+            fastas.append(fasta)
+            feats.append(feat)
+            mols.append(mol)
+        torch.save((mols, fastas, feats), self.predict_path)
 
     def setup(self, stage: str):
-        self.train_dataset = torch.load("TR0.pt")
-        self.val_dataset = torch.load("VL0.pt")
-        self.test_dataset = torch.load("TS0.pt")
+        if stage == "train":
+            self.train_dataset = torch.load(self.train_path)
+        elif stage == "val":
+            self.val_dataset = torch.load(self.val_path)
+        elif stage == "test":
+            self.test_dataset = torch.load(self.test_path)
+        elif stage == "predict":
+            self.predict_mols, self.predict_fastas, self.predict_dataset = torch.load(
+                self.predict_path
+            )
 
     def train_dataloader(self):
         return DataLoader(
@@ -101,16 +124,17 @@ class DataModule(pl.LightningDataModule):
 
     def _collate_fn(self, batch):
         (batch,) = batch
-        fasta, con = batch
-        # length = fasta.shape[-1]
-        # fasta = torch.kron(fasta, fasta)
-        # fasta = fasta.reshape(length, length, 16)
-        # fasta = fasta.transpose(-1, 0)
-        # fasta = fasta[None, ...]
+        fasta = batch[0]
         fasta = fasta[..., None]
         fasta = torch.cat(fasta.shape[-2] * [fasta], dim=-1)
         fasta_t = fasta.transpose(-1, -2)
         fasta = torch.cat([fasta, fasta_t], dim=-3)
         fasta = fasta[None, ...]
-        con = con[None, None, ...]
-        return fasta.float(), con.float()
+        fasta = fasta.float()
+        if len(batch) == 1:
+            return fasta
+        else:
+            con = batch[1]
+            con = con[None, None, ...]
+            con = con.float()
+            return fasta, con

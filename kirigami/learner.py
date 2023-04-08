@@ -1,29 +1,17 @@
 from typing import *
 
 import numpy as np
-import wandb
 from tqdm import tqdm
 
 import torch
 import torch.nn as nn
 from torch import optim
-import torch.nn.functional as F
+
 import pytorch_lightning as pl
-from torch.utils.checkpoint import checkpoint_sequential
-from torch.optim.lr_scheduler import *
 from pytorch_lightning.loggers import WandbLogger
 
-import torchmetrics
-from torchmetrics.functional import matthews_corrcoef
-from torchmetrics.functional.classification import (
-    binary_matthews_corrcoef,
-    binary_f1_score,
-    binary_precision,
-    binary_recall,
-)
-
-from kirigami.layers import *  # ResNet, ResNetParallel
-from kirigami.utils import mat2db, get_con_metrics
+from kirigami.layers import *
+from kirigami.utils import *
 
 
 class KirigamiModule(pl.LightningModule):
@@ -173,14 +161,9 @@ class KirigamiModule(pl.LightningModule):
         self.log("test/f1_mean", f1s.mean().item())
         self.log("test/f1_median", f1s.median().item())
 
-    def forward(self, ipt, post_proc=True):
-        self.model.eval()
-        self.post_proc.eval()
-        opt = self.model(ipt)
-        if post_proc:
-            opt["con"] = self.post_proc(opt["con"], ipt)
-        return opt
-
-    def predict_step(self, batch, batch_idx, dataloader_idx=0):
-        feat, lab_grd = batch
-        return self.model(feat)
+    def forward(self, feat, post_proc=True):
+        prd = self.model(feat)
+        prd = self.post_proc(prd, feat)
+        prd = self.post_proc(prd, feat)
+        prd[prd < self.threshold.item()] = 0
+        return prd

@@ -8,6 +8,27 @@ From [Wikipedia](https://en.wikipedia.org/wiki/Kirigami):
 
 The Kirigami pipeline both folds RNA molecules via a fully convolutional neural network (FCN) and uses Nussinov-style dynamic programming to recursively cut them into subsequences for pre- and post-processing.
 
+## Overview
+
+For ease of use and reproducibility, all scripts are written idiomatically according to the [Lightning](https://www.pytorchlightning.ai) specification for PyTorch with as little application-specific code as possible. The three principal classes comprise the module are:
+
+1. `kirigami.layers.ResNet`: A standard `torch.nn.Module` comprising the main model;
+2. `kirigami.data.DataModule`: A subclass of [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html?highlight=datamodule) that downloads, embeds, pickles, loads, and collates samples;
+3. `kirigami.data.KirigamiModule`: A subclass of [LightningModule](https://lightning.ai/docs/pytorch/stable/common/lightning_module.html) that wraps `kirigami.layers.ResNet` and includes a small number of hooks for reproducible logging, checkpointing, loops for training, etc.
+4. `kirigami.writer.DbnWriter`: A subclass of [BasePredictionWriter](https://lightning.ai/docs/pytorch/latest/api/lightning.pytorch.callbacks.BasePredictionWriter.html) that writes predicted tensors to files in [dot-bracket notation](https://www.tbi.univie.ac.at/RNA/ViennaRNA/doc/html/rna_structure_notations.html).
+
+```bash
+├── run.py
+└──kirigami
+  ├── __init__.py
+  ├── constants.py
+  ├── data.py
+  ├── layers.py
+  ├── learner.py
+  ├── writer.py
+  └── utils.py
+```
+
 ## Installation
 No specific setup is necessary; the small number of packages required are in listed `requirements.txt`. For example, one might run:
 ```bash
@@ -17,26 +38,9 @@ $ pip install -r requirements.txt
 $ python run.py --help
 ```
 
-## Overview
-
-For ease of use and reproducibility, all scripts are written idiomatically according to the [Lightning](https://www.pytorchlightning.ai) specification for PyTorch with as little application-specific code as possible. The three principal classes compromising the module are:
-
-1. `kirigami.layers.ResNet`: A standard `torch.nn.Module` comprising the main model;
-2. `kirigami.data.DataModule`: Used for downloading, embedding, pickling, and loading samples;
-3. `kirigami.data.KirigamiModule`: Wraps `kirigami.layers.ResNet` and includes a small number of hooks for reproducible logging, checkpointing, loops for training, etc. Please see the [documentation](https://lightning.ai/docs/pytorch/stable/common/lightning_module.html) for the main API.
-
-```bash
-kirigami
-├── __init__.py
-├── data.py
-├── layers.py
-├── learner.py
-└── utils.py
-```
-
 ## Usage
 
-The primary entrypoint for Kirigami is the [LightningCLI](https://pytorch-lightning.readthedocs.io/en/1.6.5/common/lightning_cli.html), used as follows:
+The primary entrypoint for Kirigami is the [LightningCLI](https://pytorch-lightning.readthedocs.io/en/1.6.5/common/lightning_cli.html), which allows for retraining or fine-tuning the model, testing it on the benchmark datasets, predicting novel structures, etc. It is used as follows:
 
 ```bash
 $ python run.py --help
@@ -62,7 +66,32 @@ subcommands:
     predict             Run inference on your data.
 ```
 
-## Model architecture and hyperparameters
+## Prediction
+
+Please write all inputs in standard FASTA format to `data/predict_ipt` and then call the `KirigamiModule.predict` method simply by entering:
+```bash
+$ python run.py predict
+```
+Correspondingly named `dbn` files containing the predicted secondary strucure will be written to `data/predict_opt`. 
+
+## Data
+
+Data used for training, validation, and testing are taken from the [bpRNA](https://bprna.cgrb.oregonstate.edu/) database in the form of the standard TR0, VL0, and TS0 datasets used by [SPOT-RNA](https://github.com/jaswindersingh2/SPOT-RNA), [MXfold2](https://github.com/mxfold/mxfold2), and [UFold](https://github.com/uci-cbcl/UFold). Respectively, these contain 10,814, 1,300, and 1,305 non-redundant structures. The `.st` files in the URL above were uploaded by the authors of SPOT-RNA.
+
+All data will be automatically downloaded from [Dropbox](https://www.dropbox.com/s/w3kc4iro8ztbf3m/bpRNA_dataset.zip) by the `kirigami.data.DataModule.prepare_data` method. Once any of the `LightningCLI` subcommands are run, a new file subtree will appear in the cloned repository directory:
+
+```bash
+└── data
+  ├── TR0.pt
+  ├── VL0.pt
+  ├── TS0.pt
+  ├── predict_ipt
+  └── predict_opt
+```
+Please see the documentation for the [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html) API for more detail.
+
+
+## Model architecture
 
 Kirigami consists of an extremely simple residual neural network (RNN) architecture that can be found in `kirigami/layers.py`, with primary network API being `kirigami.layers.ResNet`. The hyperparameters for the model are as follows:
 
@@ -88,17 +117,3 @@ These are:
 4. `dilations`: The dilations for said convolutional layers;
 5. `activation`: The class name for the [non-linearities](https://pytorch.org/docs/stable/nn.html#non-linear-activations-weighted-sum-nonlinearit ) in each block;
 6. `dropout`: The dropout probability for the `torch.nn.Dropout` layer in each block.
-
-## Data
-
-All data will be automatically downloaded from [Dropbox](https://www.dropbox.com/s/w3kc4iro8ztbf3m/bpRNA_dataset.zip) by the `DataModule.setup` and `DataModule.prepare_data` methods in `kirigami/data.py`. Please see the documentation for the [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html) API for more detail. No parameters are required for the use of the `DataModule` class aside from the directory into the files will be pickled:
-
-```bash
-<class 'kirigami.data.DataModule'>:
-  --data CONFIG         Path to a configuration file.
-  --data.data_dir DATA_DIR
-                        (type: Any, default: ./)
-```
-
-Data used for training, validation, and testing are taken from the [bpRNA](https://bprna.cgrb.oregonstate.edu/) database in the form of the standard TR0, VL0, and TS0 datasets used by [SPOT-RNA](https://github.com/jaswindersingh2/SPOT-RNA), [MXfold2](https://github.com/mxfold/mxfold2), and [UFold](https://github.com/uci-cbcl/UFold). Respectively, these contain 10,814, 1,300, and 1,305 non-redundant structures. The `.st` files in the URL above were uploaded by the authors of SPOT-RNA.
-

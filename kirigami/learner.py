@@ -97,6 +97,9 @@ class KirigamiModule(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         # forward pass
         feat, grd = batch
+        import pdb
+
+        pdb.set_trace()
         prd = self.model(feat)
         prd_raw = self.post_proc(prd, feat, sym_only=True)
         prd_proc = self.post_proc(prd, feat, sym_only=False)

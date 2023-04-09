@@ -3,6 +3,7 @@ import os
 import subprocess
 import re
 from collections import deque
+from tqdm import tqdm
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -113,53 +114,18 @@ def mat2db(mat):
     return dict2db(idxs, L)
 
 
-def embed_bpseq(path, ex_noncanon=False, ex_sharp=False):
-    BASES = dict(A=0, C=1, G=2, U=3)
-    CANON = {"AU", "UA", "CG", "GC", "UG", "GU"}
+def embed_fasta(path):
+    mols, fasta_strs, fasta_embeds = [], [], []
     with open(path, "r") as f:
         lines = f.read().splitlines()
-    seq = ""
-    second = {}
-    line_idx = 0
-    con_idxs = []
-    for line in lines:
-        if line.startswith("#"):
-            continue
-        words = line.split()
-        base = words[1]
-        seq += base
-    for line in lines:
-        if line.startswith("#"):
-            continue
-        words = line.split()
-        ii, jj = int(words[0]) - 1, int(words[-1]) - 1
-        if ii < jj:
-            pair = seq[ii] + seq[jj]
-            if ex_noncanon and pair not in CANON:
-                continue
-            if ex_sharp and abs(ii - jj) < 4:
-                continue
-            con_idxs.append((ii, jj))
-            con_idxs.append((jj, ii))
-    # fasta = torch.zeros(4, len(seq), dtype=torch.uint8)
-    # idxs = [BASES[char] for char in seq]
-    # fasta[idxs, list(range(len(seq)))] = 1
-    dbn = dict2db(con_idxs, len(seq))
-    con = torch.zeros(len(seq), len(seq), dtype=torch.uint8)
-    if len(con_idxs) > 0:
-        con_idxs_ = torch.tensor(con_idxs)  # + offset
-        con[con_idxs_[:, 0], con_idxs_[:, 1]] = 1
-        con[con_idxs_[:, 1], con_idxs_[:, 0]] = 1
-    return con, seq, dbn
+    for i in tqdm(range(len(lines) // 2)):
+        mols.append(lines[2 * i][1:].strip())
+        fasta_strs.append((fasta_str := lines[2 * i + 1].strip().upper()))
+        fasta_embeds.append((_embed_fasta(fasta_str),))
+    return mols, fasta_strs, fasta_embeds
 
 
-def read_fasta(path):
-    with open(path) as f:
-        fasta = f.read().splitlines()[-1]
-    return fasta
-
-
-def embed_fasta(fasta):
+def _embed_fasta(fasta):
     base_dict = dict(
         A=torch.tensor([1, 0, 0, 0]),
         C=torch.tensor([0, 1, 0, 0]),
@@ -179,21 +145,18 @@ def embed_fasta(fasta):
     return opt
 
 
-def outer_concat(fasta):
-    out = fasta.unsqueeze(-1)
-    out = torch.cat(out.shape[-2] * [out], dim=-1)
-    out_t = out.transpose(-1, -2)
-    out = torch.cat([out, out_t], dim=-3)
-    out = out.unsqueeze(0)
-    return out
-
-
-def get_vienna_rna(fasta):
-    fc = RNA.fold_compound(fasta)
-    fc.pf()
-    bpp = torch.tensor(fc.bpp())
-    bpp = bpp[:-1, :-1]
-    return bpp
+def embed_dbn(path):
+    opt = []
+    with open(path, "r") as f:
+        lines = f.read().splitlines()
+    for i in tqdm(range(len(lines) // 3)):
+        mol = lines[3 * i]
+        fasta_str = lines[3 * i + 1].upper()
+        dbn = lines[3 * i + 2]
+        fasta_embed = _embed_fasta(fasta_str)
+        dbn_embed = parsedbn(dbn)
+        opt.append((fasta_embed, dbn_embed))
+    return opt
 
 
 def get_con_metrics(prd, grd, threshold):
@@ -206,19 +169,3 @@ def get_con_metrics(prd, grd, threshold):
         precision=binary_precision(prd_flat, grd_flat, threshold).item(),
         recall=binary_recall(prd_flat, grd_flat, threshold).item(),
     )
-
-
-def embed_st(path):
-    name = ""
-    fasta = ""
-    dbn = ""
-    with open(path, "r") as f:
-        line = f.readline()
-        name = line.split()[-1]
-        while line.startswith("#"):
-            line = f.readline()
-        fasta = line.upper().strip()
-        dbn = f.readline().strip()
-    con = parsedbn(dbn)
-    fasta = embed_fasta(fasta)
-    return fasta, con

@@ -9,91 +9,54 @@ from tqdm import tqdm
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
-import zipfile
-
-# import wget
-from kirigami.utils import embed_st, read_fasta, embed_fasta
+from kirigami.utils import embed_fasta, embed_dbn
 
 
 class DataModule(pl.LightningDataModule):
-    BPRNA_URL = "https://www.dropbox.com/s/w3kc4iro8ztbf3m/bpRNA_dataset.zip"
-    DATA_NAME = Path("bpRNA_dataset")
-
     def __init__(
         self,
-        data_dir: Optional[Path] = None,
-        predict_ipt_dir: Optional[Path] = None,
-        predict_opt_dir: Optional[Path] = None,
+        bprna_dir: Optional[Path] = None,
+        input_dir: Optional[Path] = None,
+        output_dir: Optional[Path] = None,
     ):
         super().__init__()
 
-        self.data_dir = data_dir or Path.cwd() / "data"
-        self.predict_ipt_dir = predict_ipt_dir or self.data_dir / "predict_ipt"
-        self.predict_opt_dir = predict_opt_dir or self.data_dir / "predict_opt"
+        self.bprna_dir = bprna_dir or Path.cwd() / "data" / "bpRNA"
+        self.input_dir = input_dir or Path.cwd() / "data" / "predict" / "input"
+        self.output_dir = output_dir or Path.cwd() / "data" / "predict" / "output"
 
-        self.data_dir.exists() or self.data_dir.mkdir()
-        self.predict_ipt_dir.exists() or self.predict_ipt_dir.mkdir()
-        self.predict_opt_dir.exists() or self.predict_opt_dir.mkdir()
+        self.bprna_dir.exists() or self.bprna_dir.mkdir()
+        self.input_dir.exists() or self.input_dir.mkdir()
+        self.output_dir.exists() or self.output_dir.mkdir()
 
-        self.train_path = self.data_dir / "TR0.pt"
-        self.val_path = self.data_dir / "VL0.pt"
-        self.test_path = self.data_dir / "TS0.pt"
-        self.predict_path = self.data_dir / "predict.pt"
+        self.train_path = self.bprna_dir / "TR0.pt"
+        self.val_path = self.bprna_dir / "VL0.pt"
+        self.test_path = self.bprna_dir / "TS0.pt"
 
     def prepare_data(self):
-        # r = requests.get(self.BPRNA_URL, allow_redirects=True)
-        # r = wget.download(self.BPRNA_URL)
-        # f = open(self.data_dir / self.DATA_NAME.with_suffix(".zip"), "wb")
-        # f.write(r.content)
-        # f.close()
-
-        # with zipfile.ZipFile(self.data_dir / self.DATA_NAME.with_suffix(".zip")) as f:
-        #     f.extractall(self.DATA_NAME / self.data_dir)
-
         if not self.train_path.exists():
-            train_dir = self.DATA_NAME / self.data_dir / "TR0"
-            files = list(train_dir.iterdir())
-            files.sort()
-            train_list = [embed_st(file) for file in tqdm(files)]
+            train_list = embed_dbn(self.bprna_dir / "TR0.dbn")
             torch.save(train_list, self.train_path)
 
         if not self.val_path.exists():
-            val_dir = self.DATA_NAME / self.data_dir / "VL0"
-            files = list(val_dir.iterdir())
-            files.sort()
-            val_list = [embed_st(file) for file in tqdm(files)]
+            val_list = embed_dbn(self.bprna_dir / "VL0.dbn")
             torch.save(val_list, self.val_path)
 
         if not self.test_path.exists():
-            test_dir = self.DATA_NAME / self.data_dir / "TS0"
-            files = list(test_dir.iterdir())
-            files.sort()
-            test_list = [embed_st(file) for file in tqdm(files)]
+            test_list = embed_dbn(self.bprna_dir / "TS0.dbn")
             torch.save(test_list, self.test_path)
 
-        files = list(self.predict_ipt_dir.iterdir())
-        files.sort()
-        mols, fastas, feats = [], [], []
-        for file in files:
-            mol = file.stem
-            fasta = read_fasta(file)
-            feat = (embed_fasta(fasta),)
-            fastas.append(fasta)
-            feats.append(feat)
-            mols.append(mol)
-        torch.save((mols, fastas, feats), self.predict_path)
-
     def setup(self, stage: str):
-        if stage == "train":
-            self.train_dataset = torch.load(self.train_path)
-        elif stage == "val":
-            self.val_dataset = torch.load(self.val_path)
-        elif stage == "test":
-            self.test_dataset = torch.load(self.test_path)
-        elif stage == "predict":
-            self.predict_mols, self.predict_fastas, self.predict_dataset = torch.load(
-                self.predict_path
-            )
+        self.train_dataset = torch.load(self.train_path)
+        self.val_dataset = torch.load(self.val_path)
+        self.test_dataset = torch.load(self.test_path)
+        if stage == "predict":
+            self.predict_mols, self.predict_fastas, self.predict_dataset = [], [], []
+            for file in tqdm(sorted(self.input_dir.iterdir())):
+                mol, fasta, data = embed_fasta(file)
+                self.predict_mols.extend(mol)
+                self.predict_fastas.extend(fasta)
+                self.predict_dataset.extend(data)
 
     def train_dataloader(self):
         return DataLoader(

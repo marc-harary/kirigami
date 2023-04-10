@@ -18,15 +18,32 @@ For ease of use and reproducibility, all scripts are written idiomatically accor
 4. `kirigami.writer.DbnWriter`: A subclass of [BasePredictionWriter](https://lightning.ai/docs/pytorch/latest/api/lightning.pytorch.callbacks.BasePredictionWriter.html) that writes predicted tensors to files in [dot-bracket notation](https://www.tbi.univie.ac.at/RNA/ViennaRNA/doc/html/rna_structure_notations.html).
 
 ```bash
+├── LICENSE
+├── README.md
+├── configs
+│   ├── predict.yaml
+│   └── test.yaml
+├── data
+│   ├── bpRNA
+│   │   ├── TR0.dbn
+│   │   ├── TS0.dbn
+│   │   └── VL0.dbn
+│   └── predict
+│       └── input
+│           └── bpRNA_CRW_15573.fasta
+├── kirigami
+│   ├── __init__.py
+│   ├── constants.py
+│   ├── data.py
+│   ├── layers.py
+│   ├── learner.py
+│   ├── nussinov.pyx
+│   ├── utils.py
+│   └── writer.py
+├── requirements.txt
 ├── run.py
-└──kirigami
-  ├── __init__.py
-  ├── constants.py
-  ├── data.py
-  ├── layers.py
-  ├── learner.py
-  ├── writer.py
-  └── utils.py
+└── weights
+    └── 11x11.pt
 ```
 
 ## Installation
@@ -35,7 +52,7 @@ No specific setup is necessary; the small number of packages required are in lis
 $ pip -m venv kirigami-venv
 $ source kirigami-venv/bin/activate
 $ pip install -r requirements.txt
-$ python run.py --help
+$ python run.py predict
 ```
 
 ## Usage
@@ -65,30 +82,21 @@ subcommands:
     test                Perform one evaluation epoch over the test set.
     predict             Run inference on your data.
 ```
+Default configuration `yaml` files in the `configs` directory, which in turn point to the weights stored in `weights/11x11.pt`. 
 
 ## Prediction
 
-Please write all inputs in standard FASTA format to `data/predict_ipt` and then call the `KirigamiModule.predict` method simply by entering:
+Please write all inputs in standard FASTA format to `data/predict/input` and then call the `KirigamiModule.predict` method simply by entering:
 ```bash
 $ python run.py predict
 ```
-Correspondingly named `dbn` files containing the predicted secondary strucure will be written to `data/predict_opt`. 
+Correspondingly named `dbn` files containing the predicted secondary strucure will be written to `data/predict/output`. 
 
 ## Data
 
 Data used for training, validation, and testing are taken from the [bpRNA](https://bprna.cgrb.oregonstate.edu/) database in the form of the standard TR0, VL0, and TS0 datasets used by [SPOT-RNA](https://github.com/jaswindersingh2/SPOT-RNA), [MXfold2](https://github.com/mxfold/mxfold2), and [UFold](https://github.com/uci-cbcl/UFold). Respectively, these contain 10,814, 1,300, and 1,305 non-redundant structures. The `.st` files in the URL above were uploaded by the authors of SPOT-RNA.
 
-All data will be automatically downloaded from [Dropbox](https://www.dropbox.com/s/w3kc4iro8ztbf3m/bpRNA_dataset.zip) by the `kirigami.data.DataModule.prepare_data` method. Once any of the `LightningCLI` subcommands are run, a new file subtree will appear in the cloned repository directory:
-
-```bash
-└── data
-  ├── TR0.pt
-  ├── VL0.pt
-  ├── TS0.pt
-  ├── predict_ipt
-  └── predict_opt
-```
-Please see the documentation for the [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html) API for more detail.
+The data are currently written to `dbn` files in `data/bpRNA/TR0.dbn`, `data/bpRNA/VL0.dbn`, `data/bpRNA/TS0.dbn` but will be embedded as `torch.Tensor`s by the `kirigami.data.DataModule.prepare_data` method once any of the `LightningCLI` subcommands are run. Please see the documentation for the [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html) API for more detail.
 
 
 ## Model architecture

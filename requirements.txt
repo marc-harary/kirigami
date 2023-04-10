@@ -1,9 +1,5 @@
-torch
-pytorch_lightning
-numpy
-torchmetrics
-cython
-tqdm
-timm
-networkx
-ViennaRNA
+numpy==1.24.1
+pytorch_lightning[extra]==2.0.0
+torch==2.0.0
+torchmetrics==0.11.4
+tqdm==4.65.0

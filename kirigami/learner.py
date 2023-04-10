@@ -97,9 +97,6 @@ class KirigamiModule(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         # forward pass
         feat, grd = batch
-        import pdb
-
-        pdb.set_trace()
         prd = self.model(feat)
         prd_raw = self.post_proc(prd, feat, sym_only=True)
         prd_proc = self.post_proc(prd, feat, sym_only=False)
@@ -151,11 +148,12 @@ class KirigamiModule(pl.LightningModule):
 
     def on_test_epoch_end(self):
         # log full output table all at once
-        self.logger.log_table(
-            key="test/scores",
-            data=self.test_rows,
-            columns=["dbn", "mcc", "f1", "precision", "recall"],
-        )
+        if isinstance(self.logger, WandbLogger):
+            self.logger.log_table(
+                key="test/scores",
+                data=self.test_rows,
+                columns=["dbn", "mcc", "f1", "precision", "recall"],
+            )
         # compute and log aggregate statistics for ease of viewing
         mccs = torch.tensor([row[1] for row in self.test_rows])
         f1s = torch.tensor([row[2] for row in self.test_rows])

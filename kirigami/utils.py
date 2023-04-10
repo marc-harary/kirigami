@@ -1,4 +1,3 @@
-import string
 import os
 import subprocess
 import re
@@ -13,10 +12,7 @@ from torchmetrics.functional.classification import (
     binary_precision,
     binary_recall,
 )
-
-
-PSEUDO_LEFT = "({[<" + string.ascii_uppercase
-PSEUDO_RIGHT = ")}]>" + string.ascii_lowercase
+from kirigami.constants import *
 
 
 def build_table(pair_dict, L):
@@ -126,22 +122,7 @@ def embed_fasta(path):
 
 
 def _embed_fasta(fasta):
-    base_dict = dict(
-        A=torch.tensor([1, 0, 0, 0]),
-        C=torch.tensor([0, 1, 0, 0]),
-        G=torch.tensor([0, 0, 1, 0]),
-        U=torch.tensor([0, 0, 0, 1]),
-        N=torch.tensor([0.25, 0.25, 0.25, 0.25]),
-        D=torch.tensor([1 / 3, 0, 1 / 3, 1 / 3]),
-        W=torch.tensor([0.5, 0, 0, 0.5]),
-        V=torch.tensor([1 / 3, 1 / 3, 1 / 3, 0]),
-        K=torch.tensor([0, 0, 0.5, 0.5]),
-        R=torch.tensor([0.5, 0, 0.5, 0]),
-        M=torch.tensor([0.5, 0.5, 0, 0]),
-        S=torch.tensor([0, 0.5, 0.5, 0]),
-        Y=torch.tensor([0, 0.5, 0, 0.5]),
-    )
-    opt = torch.stack([base_dict[char] for char in fasta], axis=1)
+    opt = torch.stack([BASE_DICT[char] for char in fasta], axis=1)
     return opt
 
 

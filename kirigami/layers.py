@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from math import log, ceil
+from kirigami.constants import *
 
 
 class Symmetrize(nn.Module):
@@ -22,20 +23,13 @@ class Symmetrize(nn.Module):
 class RemoveSharp(nn.Module):
     """
     Removes sharp angles from base-pairing probabilities.
-
-    Attributes
-    ----------
-    min_dist : int
-        Minimum separation in between paired bases.
     """
-
-    min_dist: int = 4
 
     def __init__(self):
         super().__init__()
 
     def forward(self, ipt):
-        return ipt.tril(-self.min_dist) + ipt.triu(self.min_dist)
+        return ipt.tril(-MIN_DIST) + ipt.triu(MIN_DIST)
 
 
 class Canonicalize(nn.Module):
@@ -45,16 +39,14 @@ class Canonicalize(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self._bases = torch.Tensor([2, 3, 5, 7])
-        self._pairs = {14, 15, 35}
 
     def forward(self, con, feat):
         con_ = con.squeeze()
-        seq = feat.squeeze()[: len(self._bases), :, 0]
-        pairs = self._bases.to(seq.device)[seq.argmax(0)]
+        seq = feat.squeeze()[: len(BASE_PRIMES), :, 0]
+        pairs = BASE_PRIMES.to(seq.device)[seq.argmax(0)]
         pair_mat = pairs.outer(pairs)
         pair_mask = torch.zeros(con_.shape, dtype=bool, device=con_.device)
-        for pair in self._pairs:
+        for pair in PAIRS:
             pair_mask = torch.logical_or(pair_mask, pair_mat == pair)
         con_[~pair_mask] = 0.0
         return con_.reshape_as(con)
@@ -67,9 +59,6 @@ class Greedy(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self._bases = torch.Tensor([2, 3, 5, 7])
-        self._pairs = {14, 15, 35}
-        self._min_dist = 4
         self.symmetrize = Symmetrize()
         self.remove_sharp = RemoveSharp()
         self.canonicalize = Canonicalize()
@@ -87,7 +76,7 @@ class Greedy(nn.Module):
         # filter for maximum one pair per base
         L = len(con_)
         con_flat = con_.flatten()
-        idxs = con_flat.argsort(descending=True)
+        idxs = con_flat.cpu().argsort(descending=True)
         ii = idxs % L
         jj = torch.div(idxs, L, rounding_mode="floor")
         ground_truth = min(ground_truth, L // 2)

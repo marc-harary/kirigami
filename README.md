@@ -10,12 +10,13 @@ The Kirigami pipeline both folds RNA molecules via a fully convolutional neural 
 
 ## Overview
 
-For ease of use and reproducibility, all scripts are written idiomatically according to the [Lightning](https://www.pytorchlightning.ai) specification for PyTorch with as little application-specific code as possible. The three principal classes comprise the module are:
+For ease of use and reproducibility, all scripts are written idiomatically according to the [Lightning](https://www.pytorchlightning.ai) specification for PyTorch with as little application-specific code as possible. The five principal classes comprising the module are:
 
-1. `kirigami.layers.ResNet`: A standard `torch.nn.Module` comprising the main model;
-2. `kirigami.data.DataModule`: A subclass of [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html?highlight=datamodule) that downloads, embeds, pickles, loads, and collates samples;
-3. `kirigami.data.KirigamiModule`: A subclass of [LightningModule](https://lightning.ai/docs/pytorch/stable/common/lightning_module.html) that wraps `kirigami.layers.ResNet` and includes a small number of hooks for reproducible logging, checkpointing, loops for training, etc.
-4. `kirigami.writer.DbnWriter`: A subclass of [BasePredictionWriter](https://lightning.ai/docs/pytorch/latest/api/lightning.pytorch.callbacks.BasePredictionWriter.html) that writes predicted tensors to files in [dot-bracket notation](https://www.tbi.univie.ac.at/RNA/ViennaRNA/doc/html/rna_structure_notations.html).
+1. `kirigami.layers.ResNet`: A standard `torch.nn.Module` comprising the main network;
+2. `kirigami.layers.Greedy`: A simple constraint-satisfaction problem (CSP) solver that enforces constraints on the output matrix;
+3. `kirigami.data.DataModule`: A subclass of [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html?highlight=datamodule) that downloads, embeds, pickles, loads, and collates samples;
+4. `kirigami.data.KirigamiModule`: A subclass of [LightningModule](https://lightning.ai/docs/pytorch/stable/common/lightning_module.html) that wraps `kirigami.layers.ResNet` and includes a small number of hooks for reproducible logging, checkpointing, loops for training, etc.
+5. `kirigami.writer.DbnWriter`: A subclass of [BasePredictionWriter](https://lightning.ai/docs/pytorch/latest/api/lightning.pytorch.callbacks.BasePredictionWriter.html) that writes predicted tensors to files in [dot-bracket notation](https://www.tbi.univie.ac.at/RNA/ViennaRNA/doc/html/rna_structure_notations.html).
 
 ```bash
 ├── LICENSE
@@ -84,13 +85,37 @@ subcommands:
 ```
 Default configuration `yaml` files in the `configs` directory, which in turn point to the weights stored in `weights/11x11.pt`. 
 
-## Prediction
+### Prediction
 
 Please write all inputs in standard FASTA format to `data/predict/input` and then call the `KirigamiModule.predict` method simply by entering:
 ```bash
 $ python run.py predict
 ```
 Correspondingly named `dbn` files containing the predicted secondary strucure will be written to `data/predict/output`. 
+
+### Testing
+
+Running 
+```bash
+$ python run.py test
+```
+will evaluate Kirigami on each molecule in TS0, compute accuracy metrics, and output the averages to the terminal.
+
+
+### (Re)training
+
+Although the weights of the production model are located at `weights/11x11.pt`, Kirigami can be retrained with varying hyperparameters. Simply run 
+```bash
+$ python run.py fit --help
+```
+for an exhaustive list of configurations.
+
+To perform an exact, globally seeded replication of the experiment that generated the weights, run
+```bash
+$ python run.py fit
+```
+to use the appropriate configuration file.
+
 
 ## Data
 

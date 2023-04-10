@@ -7,8 +7,10 @@ def main():
     cli = LightningCLI(
         KirigamiModule,
         DataModule,
-        save_config_callback=None,
-        parser_kwargs={"predict": {"default_config_files": ["configs/predict.yaml"]}},
+        parser_kwargs={
+            "predict": {"default_config_files": ["configs/predict.yaml"]},
+            "test": {"default_config_files": ["configs/test.yaml"]},
+        },
     )
 
 

@@ -91,7 +91,7 @@ Please write all inputs in standard FASTA format to `data/predict/input` and the
 ```bash
 $ python run.py predict
 ```
-Correspondingly named `dbn` files containing the predicted secondary strucure will be written to `data/predict/output`. 
+Correspondingly named `dbn` files containing the predicted secondary strucure will be written to `data/predict/output`. An example file is located in `data/predict/input/bpRNA_CRW_15573.fasta`.
 
 ### Testing
 

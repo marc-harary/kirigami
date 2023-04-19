@@ -1,5 +1,5 @@
 # pytorch_lightning==2.0.0
-seed_everything: 123
+seed_everything: 3459306840
 trainer:
   accelerator: auto
   strategy: auto
@@ -49,7 +49,7 @@ model:
   dilations:
   - 1
   - 1
-  activation: ReLU
+  activation: GELU
   dropout: 0.15
   optim: Adam
   lr: 0.0001
@@ -59,4 +59,4 @@ data:
   input_dir: null
   output_dir: null
 return_predictions: null
-ckpt_path: weights/11x11.pt
+ckpt_path: weights/12s5o9td-mod.ckpt #weights/11x11.pt

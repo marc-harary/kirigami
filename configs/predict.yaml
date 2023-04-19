@@ -59,4 +59,4 @@ data:
   input_dir: null
   output_dir: null
 return_predictions: null
-ckpt_path: weights/12s5o9td-mod.ckpt #weights/11x11.pt
+ckpt_path: weights/main.ckpt

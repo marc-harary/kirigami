@@ -50,13 +50,13 @@ For ease of use and reproducibility, all scripts are written idiomatically accor
 ## Installation
 Note that [git-lfs](https://git-lfs.com/) is required to download the weights. Otherwise, no specific setup is necessary. For example, one might run:
 ```bash
-$ git clone https://github.com/marc-harary/kirigami
-$ cd kirigami
-$ git lfs pull
-$ pip -m venv kirigami-venv
-$ source kirigami-venv/bin/activate
-$ pip install -r requirements.txt
-$ python run.py predict
+git clone https://github.com/marc-harary/kirigami
+cd kirigami
+git lfs pull
+python3 -m venv kirigami-venv
+source kirigami-venv/bin/activate
+pip3 install -r requirements.txt
+python3 run.py test 
 ```
 
 ## Usage

@@ -48,8 +48,11 @@ For ease of use and reproducibility, all scripts are written idiomatically accor
 ```
 
 ## Installation
-No specific setup is necessary; the small number of packages required are in listed `requirements.txt`. For example, one might run:
+Note that [git-lfs](https://git-lfs.com/) is required to download the weights. Otherwise, no specific setup is necessary. For example, one might run:
 ```bash
+$ git clone https://github.com/marc-harary/kirigami
+$ cd kirigami
+$ git lfs pull
 $ pip -m venv kirigami-venv
 $ source kirigami-venv/bin/activate
 $ pip install -r requirements.txt

@@ -44,16 +44,19 @@ For ease of use and reproducibility, all scripts are written idiomatically accor
 ├── requirements.txt
 ├── run.py
 └── weights
-    └── 11x11.pt
+    └── main.ckpt
 ```
 
 ## Installation
-No specific setup is necessary; the small number of packages required are in listed `requirements.txt`. For example, one might run:
+Note that [git-lfs](https://git-lfs.com/) is required to download the weights. Otherwise, no specific setup is necessary. For example, one might run:
 ```bash
-$ pip -m venv kirigami-venv
-$ source kirigami-venv/bin/activate
-$ pip install -r requirements.txt
-$ python run.py predict
+git clone https://github.com/marc-harary/kirigami
+cd kirigami
+git lfs pull
+python3 -m venv kirigami-venv
+source kirigami-venv/bin/activate
+pip3 install -r requirements.txt
+python3 run.py test 
 ```
 
 ## Usage
@@ -83,7 +86,7 @@ subcommands:
     test                Perform one evaluation epoch over the test set.
     predict             Run inference on your data.
 ```
-Default configuration `yaml` files in the `configs` directory, which in turn point to the weights stored in `weights/11x11.pt`. 
+Default configuration `yaml` files in the `configs` directory, which in turn point to the weights stored in `weights/main.ckpt`. 
 
 ### Prediction
 
@@ -104,7 +107,7 @@ will evaluate Kirigami on each molecule in TS0, compute accuracy metrics, and ou
 
 ### (Re)training
 
-Although the weights of the production model are located at `weights/11x11.pt`, Kirigami can be retrained with varying hyperparameters. Simply run 
+Although the weights of the production model are located at `weights/main.ckpt`, Kirigami can be retrained with varying hyperparameters. Simply run 
 ```bash
 $ python run.py fit --help
 ```

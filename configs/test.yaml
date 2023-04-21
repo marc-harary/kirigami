@@ -48,7 +48,7 @@ model:
   dilations:
   - 1
   - 1
-  activation: GELU # ReLU
+  activation: ReLU
   dropout: 0.15
   optim: Adam
   lr: 0.0001
@@ -57,5 +57,5 @@ data:
   bprna_dir: null
   input_dir: null
   output_dir: null
-ckpt_path: weights/12s5o9td-mod.ckpt # weights/11x11.pt
+ckpt_path: weights/main.ckpt # weights/11x11.pt
 verbose: true

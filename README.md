@@ -64,7 +64,7 @@ python3 run.py test
 The primary entrypoint for Kirigami is the [LightningCLI](https://pytorch-lightning.readthedocs.io/en/1.6.5/common/lightning_cli.html), which allows for retraining or fine-tuning the model, testing it on the benchmark datasets, predicting novel structures, etc. It is used as follows:
 
 ```bash
-$ python run.py --help
+python run.py --help
 usage: run.py [-h] [-c CONFIG] [--print_config[=flags]] {fit,validate,test,predict} ...
 
 pytorch-lightning trainer command line tool
@@ -92,7 +92,7 @@ Default configuration `yaml` files in the `configs` directory, which in turn poi
 
 Please write all inputs in standard FASTA format to `data/predict/input` and then call the `KirigamiModule.predict` method simply by entering:
 ```bash
-$ python run.py predict
+python run.py predict
 ```
 Correspondingly named `dbn` files containing the predicted secondary strucure will be written to `data/predict/output`. An example file is located in `data/predict/input/bpRNA_CRW_15573.fasta`.
 
@@ -100,7 +100,7 @@ Correspondingly named `dbn` files containing the predicted secondary strucure wi
 
 Running 
 ```bash
-$ python run.py test
+python run.py test
 ```
 will evaluate Kirigami on each molecule in TS0, compute accuracy metrics, and output the averages to the terminal.
 
@@ -109,13 +109,13 @@ will evaluate Kirigami on each molecule in TS0, compute accuracy metrics, and ou
 
 Although the weights of the production model are located at `weights/main.ckpt`, Kirigami can be retrained with varying hyperparameters. Simply run 
 ```bash
-$ python run.py fit --help
+python run.py fit --help
 ```
 for an exhaustive list of configurations.
 
 To perform an exact, globally seeded replication of the experiment that generated the weights, run
 ```bash
-$ python run.py fit
+python run.py fit
 ```
 to use the appropriate configuration file.
 

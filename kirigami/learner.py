@@ -137,14 +137,10 @@ class KirigamiModule(pl.LightningModule):
         feat, grd = batch
         prd = self.model(feat)
         prd = self.post_proc(prd, feat)
-        # compute and log loss
         loss = self.crit(prd, grd)
         self.log("test/loss", loss)
-        # convert to dbn, compute metrics, and write row in table
         metrics_dict = get_con_metrics(prd, grd, self.threshold.item())
-        prd[prd < self.threshold.item()] = 0
-        dbn = mat2db(prd)
-        self.test_rows.append((dbn, *metrics_dict.values()))
+        self.test_rows.append(metrics_dict)
 
     def on_test_epoch_end(self):
         # log full output table all at once
@@ -152,11 +148,13 @@ class KirigamiModule(pl.LightningModule):
             self.logger.log_table(
                 key="test/scores",
                 data=self.test_rows,
-                columns=["dbn", "mcc", "f1", "precision", "recall"],
+                columns=["mcc", "f1", "precision", "recall"],
             )
         # compute and log aggregate statistics for ease of viewing
-        mccs = torch.tensor([row[1] for row in self.test_rows])
-        f1s = torch.tensor([row[2] for row in self.test_rows])
+        mccs = torch.tensor([row["mcc"] for row in self.test_rows])
+        f1s = torch.tensor([row["f1"] for row in self.test_rows])
+        mccs[mccs.isnan()] = 0
+        f1s[f1s.isnan()] = 0
         self.log("test/mcc_mean", mccs.mean().item())
         self.log("test/mcc_median", mccs.median().item())
         self.log("test/f1_mean", f1s.mean().item())
@@ -164,7 +162,6 @@ class KirigamiModule(pl.LightningModule):
 
     def forward(self, feat, post_proc=True):
         prd = self.model(feat)
-        prd = self.post_proc(prd, feat)
         prd = self.post_proc(prd, feat)
         prd[prd < self.threshold.item()] = 0
         return prd

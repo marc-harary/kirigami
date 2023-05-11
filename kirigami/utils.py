@@ -141,9 +141,9 @@ def embed_dbn(path):
 
 
 def get_con_metrics(prd, grd, threshold):
-    idxs = torch.ones_like(prd, dtype=bool).triu(1)                                
-    grd_flat = grd.squeeze()[idxs].int()                                           
-    prd_flat = prd.squeeze()[idxs]    
+    idxs = torch.ones_like(prd.squeeze(), dtype=bool).triu(1)
+    grd_flat = grd.squeeze()[idxs].int()
+    prd_flat = prd.squeeze()[idxs]
     return dict(
         mcc=binary_matthews_corrcoef(prd_flat, grd_flat, threshold).item(),
         f1=binary_f1_score(prd_flat, grd_flat, threshold).item(),

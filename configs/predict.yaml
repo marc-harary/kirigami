@@ -39,6 +39,8 @@ trainer:
   sync_batchnorm: false
   reload_dataloaders_every_n_epochs: 0
   default_root_dir: null
+  callbacks:
+    - class_path: kirigami.writer.DbnWriter
 model:
   n_blocks: 32
   n_channels: 32
@@ -58,4 +60,3 @@ data:
   input_dir: null
   output_dir: null
 ckpt_path: weights/main.ckpt # weights/11x11.pt
-verbose: true

@@ -1,4 +1,7 @@
+from typing import List
 from pytorch_lightning.callbacks import BasePredictionWriter
+from pytorch_lightning import LightningModule, Trainer
+import torch
 from tqdm import tqdm
 from kirigami.utils import mat2db
 
@@ -15,14 +18,17 @@ class DbnWriter(BasePredictionWriter):
 
     def write_on_batch_end(
         self,
-        trainer,
-        pl_module,
-        prediction,
-        batch_indices,
-        batch,
-        batch_idx,
-        dataloader_idx,
-    ):
+        trainer: Trainer,
+        pl_module: LightningModule,
+        prediction: torch.Tensor,
+        batch_indices: torch.Tensor,
+        batch: torch.Tensor,
+        batch_idx: int,
+        dataloader_idx: int,
+    ) -> None:
+        """
+        Writes dot-bracket file for all predicted label in test batch.
+        """
         opt_dir = trainer.datamodule.output_dir
         mol = trainer.datamodule.predict_mols[batch_idx]
         fasta = trainer.datamodule.predict_fastas[batch_idx]
@@ -32,11 +38,14 @@ class DbnWriter(BasePredictionWriter):
 
     def write_on_epoch_end(
         self,
-        trainer,
-        pl_module,
-        predictions,
-        batch_indices,
-    ):
+        trainer: Trainer,
+        pl_module: LightningModule,
+        predictions: List[torch.Tensor],
+        batch_indices: torch.Tensor,
+    ) -> None:
+        """
+        Writes dot-bracket files for all predicted labels at end of test epoch.
+        """
         opt_dir = trainer.datamodule.output_dir
         for batch_idx in tqdm(batch_indices[0]):
             batch_idx = batch_idx[0]

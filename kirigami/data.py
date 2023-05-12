@@ -1,18 +1,17 @@
 from pathlib import Path
-from typing import *
-import os
-from math import ceil, floor
-import math
-from torch.nn import functional as F
+from typing import Optional
 import torch
 from tqdm import tqdm
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 import pytorch_lightning as pl
 from kirigami.utils import embed_fasta, embed_dbn
 
 
 class DataModule(pl.LightningDataModule):
+    """
+    Kirigami API for reading, writing, and embedding data.
+    """
+
     def __init__(
         self,
         bprna_dir: Optional[Path] = None,
@@ -25,13 +24,21 @@ class DataModule(pl.LightningDataModule):
         self.input_dir = input_dir or Path.cwd() / "data" / "predict" / "input"
         self.output_dir = output_dir or Path.cwd() / "data" / "predict" / "output"
 
-        self.bprna_dir.exists() or self.bprna_dir.mkdir()
-        self.input_dir.exists() or self.input_dir.mkdir()
-        self.output_dir.exists() or self.output_dir.mkdir()
+        for folder in [self.bprna_dir, self.input_dir, self.output_dir]:
+            if not folder.exists():
+                folder.mkdir()
 
         self.train_path = self.bprna_dir / "TR0.pt"
         self.val_path = self.bprna_dir / "VL0.pt"
         self.test_path = self.bprna_dir / "TS0.pt"
+
+        self.train_dataset = None
+        self.val_dataset = None
+        self.test_dataset = None
+        self.predict_dataset = None
+
+        self.predict_mols = None
+        self.predict_fastas = None
 
     def prepare_data(self):
         if not self.train_path.exists():
@@ -51,7 +58,9 @@ class DataModule(pl.LightningDataModule):
         self.val_dataset = torch.load(self.val_path)
         self.test_dataset = torch.load(self.test_path)
         if stage == "predict":
-            self.predict_mols, self.predict_fastas, self.predict_dataset = [], [], []
+            self.predict_mols = []
+            self.predict_fastas = []
+            self.predict_dataset = []
             for file in tqdm(sorted(self.input_dir.iterdir())):
                 mol, fasta, data = embed_fasta(file)
                 self.predict_mols.extend(mol)
@@ -69,12 +78,18 @@ class DataModule(pl.LightningDataModule):
 
     def val_dataloader(self):
         return DataLoader(
-            self.val_dataset, collate_fn=self._collate_fn, shuffle=False, batch_size=1
+            self.val_dataset,
+            collate_fn=self._collate_fn,
+            shuffle=False,
+            batch_size=1,
         )
 
     def test_dataloader(self):
         return DataLoader(
-            self.test_dataset, collate_fn=self._collate_fn, shuffle=False, batch_size=1
+            self.test_dataset,
+            collate_fn=self._collate_fn,
+            shuffle=False,
+            batch_size=1,
         )
 
     def predict_dataloader(self):
@@ -96,8 +111,7 @@ class DataModule(pl.LightningDataModule):
         fasta = fasta.float()
         if len(batch) == 1:
             return fasta
-        else:
-            con = batch[1]
-            con = con[None, None, ...]
-            con = con.float()
-            return fasta, con
+        con = batch[1]
+        con = con[None, None, ...]
+        con = con.float()
+        return fasta, con

@@ -1,21 +1,19 @@
-from typing import *
-
-import numpy as np
-from tqdm import tqdm
-
+from typing import Tuple
 import torch
-import torch.nn as nn
-from torch import optim
-
+from torch import nn
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import WandbLogger
-
-from kirigami.layers import *
-from kirigami.utils import *
+from kirigami.layers import ResNet, Greedy
+from kirigami.constants import GRID
+from kirigami.utils import get_con_metrics
 
 
 class KirigamiModule(pl.LightningModule):
-    grid = torch.linspace(0, 1, 100)
+
+    """
+    Inherits from `pytorch_lightning.LightningModule` to create wrapper class
+    for Kirigami network. Serves as main API to Kirigami pipeline.
+    """
 
     def __init__(
         self,
@@ -27,7 +25,6 @@ class KirigamiModule(pl.LightningModule):
         dropout: float,
         optim: str,
         lr: float,
-        post_proc: str = "greedy",
     ):
         super().__init__()
         # non-trainable hyperparameters
@@ -49,14 +46,12 @@ class KirigamiModule(pl.LightningModule):
         # initialize criterion
         self.crit = nn.BCELoss()
         # initialize post-processing module
-        if post_proc == "greedy":
-            self.post_proc = Greedy()
-        elif post_proc == "blossom":
-            self.post_proc = Blossom()
-        elif post_proc == "dynamic":
-            self.post_proc = Dynamic()
-        else:
-            raise ValueError("Invalid post-processing type.")
+        self.post_proc = Greedy()
+
+        self.raw_val_metrics = None
+        self.proc_val_metrics = None
+        self.n_val = None
+        self.test_rows = None
 
         self.save_hyperparameters()
 
@@ -81,16 +76,16 @@ class KirigamiModule(pl.LightningModule):
 
     def on_validation_epoch_start(self):
         self.raw_val_metrics = dict(
-            mcc=torch.zeros_like(self.grid),
-            f1=torch.zeros_like(self.grid),
-            precision=torch.zeros_like(self.grid),
-            recall=torch.zeros_like(self.grid),
+            mcc=torch.zeros_like(GRID),
+            f1=torch.zeros_like(GRID),
+            precision=torch.zeros_like(GRID),
+            recall=torch.zeros_like(GRID),
         )
         self.proc_val_metrics = dict(
-            mcc=torch.zeros_like(self.grid),
-            f1=torch.zeros_like(self.grid),
-            precision=torch.zeros_like(self.grid),
-            recall=torch.zeros_like(self.grid),
+            mcc=torch.zeros_like(GRID),
+            f1=torch.zeros_like(GRID),
+            precision=torch.zeros_like(GRID),
+            recall=torch.zeros_like(GRID),
         )
         self.n_val = 0
 
@@ -162,6 +157,7 @@ class KirigamiModule(pl.LightningModule):
 
     def forward(self, feat, post_proc=True):
         prd = self.model(feat)
-        prd = self.post_proc(prd, feat)
+        if post_proc:
+            prd = self.post_proc(prd, feat)
         prd[prd < self.threshold.item()] = 0
         return prd

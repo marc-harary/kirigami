@@ -52,7 +52,6 @@ model:
   dropout: 0.15
   optim: Adam
   lr: 0.0001
-  post_proc: greedy
 data:
   bprna_dir: null
   input_dir: null

@@ -1,11 +1,8 @@
-from typing import *
-import sys
-import json
+from typing import Tuple, List
+from math import ceil
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from math import log, ceil
-from kirigami.constants import *
+from torch import nn
+from kirigami.constants import BASE_PRIMES, MIN_DIST, PAIRS
 
 
 class Symmetrize(nn.Module):
@@ -48,6 +45,10 @@ class Canonicalize(nn.Module):
         pair_mask = torch.zeros(con_.shape, dtype=bool, device=con_.device)
         for pair in PAIRS:
             pair_mask = torch.logical_or(pair_mask, pair_mat == pair)
+        vals, _ = seq.max(0)
+        degen = vals < 1.0
+        pair_mask[degen, :] = True  # do not filter degenerate pairs
+        pair_mask[:, degen] = True
         con_[~pair_mask] = 0.0
         return con_.reshape_as(con)
 
@@ -63,7 +64,7 @@ class Greedy(nn.Module):
         self.remove_sharp = RemoveSharp()
         self.canonicalize = Canonicalize()
 
-    def forward(self, con, feat, ground_truth=torch.inf, sym_only=False):
+    def forward(self, con, feat, sym_only=False):
         con = self.symmetrize(con)
 
         if self.training or sym_only:
@@ -71,97 +72,29 @@ class Greedy(nn.Module):
 
         con = self.remove_sharp(con)
         con = self.canonicalize(con, feat)
-        con_ = con.squeeze()
+        shape = con.shape
+        con = con.squeeze()
 
         # filter for maximum one pair per base
-        L = len(con_)
-        con_flat = con_.flatten()
+        length = len(con)
+        con_flat = con.flatten()
         idxs = con_flat.cpu().argsort(descending=True)
-        ii = idxs % L
-        jj = torch.div(idxs, L, rounding_mode="floor")
-        ground_truth = min(ground_truth, L // 2)
-        memo = torch.zeros(L, dtype=bool)
-        one_mask = torch.zeros(L, L, dtype=bool)
+        idxi = idxs % length
+        idxj = torch.div(idxs, length, rounding_mode="floor")
+        memo = torch.zeros(length, dtype=bool)
+        one_mask = torch.zeros(length, length, dtype=bool)
         num_pairs = 0
-        for i, j in zip(ii, jj):
-            if num_pairs == ground_truth:
+        for i, j in zip(idxi, idxj):
+            if num_pairs == length // 2:
                 break
             if memo[i] or memo[j]:
                 continue
             one_mask[i, j] = one_mask[j, i] = True
             memo[i] = memo[j] = True
             num_pairs += 1
-        con_[~one_mask] = 0.0
+        con[~one_mask] = 0.0
 
-        return con_.reshape_as(con)
-
-
-class Dynamic(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.symmetrize = Symmetrize()
-        self.remove_sharp = RemoveSharp()
-        self.canonicalize = Canonicalize()
-
-    def forward(self, con, feat, *args, **kwargs):
-        if self.training:
-            return con
-
-        con = self.symmetrize(con)
-        con = self.remove_sharp(con)
-        con = self.canonicalize(con, feat)
-        con_ = con.squeeze()
-
-        con_np = con_.cpu().numpy()
-        pair_mask_np = kirigami.nussinov.nussinov(con_np.astype(np.float64))
-        pair_mask = torch.from_numpy(pair_mask_np).to(con.device)
-        con_ *= pair_mask
-
-        return con_.reshape_as(con)
-
-
-class Blossom(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self._bases = torch.Tensor([2, 3, 5, 7])
-        self._pairs = {14, 15, 35}
-        self._min_dist = 4
-        self.symmetrize = Symmetrize()
-        self.remove_sharp = RemoveSharp()
-        self.canonicalize = Canonicalize()
-
-    def forward(self, con, feat, ground_truth=torch.inf, sym_only=False):
-        con = self.symmetrize(con)
-
-        if self.training or sym_only:
-            return con
-        con = self.remove_sharp(con)
-        con = self.canonicalize(con, feat)
-
-        if torch.sum(con > 0) == 0:
-            return con
-
-        con_cpu = con.clone().cpu()
-        con_cpu = con_cpu.squeeze()
-        L = con_cpu.shape[-1]
-
-        G = nx.Graph()
-        edges = []
-        for i in range(L):
-            for j in range(L):
-                if con_cpu[i, j] > 0:
-                    edges.append((i, j, con_cpu[i, j]))
-        G.add_weighted_edges_from(edges)
-        edges_match = torch.tensor(list(nx.max_weight_matching(G)))
-
-        mask = torch.zeros_like(con_cpu)
-        mask[edges_match[:, 0], edges_match[:, 1]] = 1
-        mask[edges_match[:, 1], edges_match[:, 0]] = 1
-        mask = mask.to(con.device)
-        mask = mask.reshape_as(con)
-        con = con * mask
-
-        return con
+        return con.reshape(shape)
 
 
 class ResNetBlock(nn.Module):

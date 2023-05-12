@@ -1,0 +1,9 @@
+[TYPECHECK]
+
+generated-members=numpy.*, torch.*, torch.nn.*
+
+[BASIC]
+good-names=i, j, k, f, l, lr
+
+[MASTER]
+disable=C0114, R0902, R0913, W0221

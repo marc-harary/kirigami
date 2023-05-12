@@ -1,10 +1,15 @@
-import torch
 from pytorch_lightning.callbacks import BasePredictionWriter
 from tqdm import tqdm
 from kirigami.utils import mat2db
 
 
 class DbnWriter(BasePredictionWriter):
+    """
+    Inherits from pytorch_lightning.callbacks.BasePredictionWriter to save
+    adjacency matrices returned by the prediction loop in `KirigamiModule` to
+    dot-bracket files.
+    """
+
     def __init__(self):
         super().__init__(write_interval="epoch")
 
@@ -25,7 +30,13 @@ class DbnWriter(BasePredictionWriter):
         dbn = mat2db(prediction)
         opt_file.write_text(f">{mol}\n{fasta}\n{dbn}\n")
 
-    def write_on_epoch_end(self, trainer, pl_module, predictions, batch_indices):
+    def write_on_epoch_end(
+        self,
+        trainer,
+        pl_module,
+        predictions,
+        batch_indices,
+    ):
         opt_dir = trainer.datamodule.output_dir
         for batch_idx in tqdm(batch_indices[0]):
             batch_idx = batch_idx[0]

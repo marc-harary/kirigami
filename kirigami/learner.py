@@ -13,6 +13,57 @@ class KirigamiModule(pl.LightningModule):
     """
     Inherits from `pytorch_lightning.LightningModule` to create wrapper class
     for Kirigami network. Serves as main API to Kirigami pipeline.
+
+    Attributes
+    ----------
+    threshold : float
+        Pass
+    optim : Pass
+        Pass
+    lr : float
+        Learning rate for training.
+    model : kirigami.layers.ResNet
+        Residual neural network module.
+    crit : nn.Module
+        Criterion for computing binary cross-entropy loss.
+    post_proc : kirigami.layers.Greedy
+        Post-processing module for enforcing constraints on output.
+    raw_val_metrics : dict
+        Dictionary of classification metrics for non-processed predicted
+        labels on validation set as computed at each threshold in grid search.
+    proc_val_metrics : dict
+        Dictionary of classification metrics for post-processed predicted
+        labels on validation set as computed at each threshold in grid search.
+    n_val : int
+        Number of molecules in validation set.
+    test_rows : list
+        List containing dictionary of classification metrics for each molecule
+        in test set.
+
+    Methods
+    -------
+    configure_optimizers()
+        Sets up optimizer for training.
+    on_fit_start()
+        Logs code for Weights and Biases at start of training.
+    training_step(batch, batch_idx)
+        Script for step of training epoch.
+    on_validation_epoch_start()
+        Reinitializes validation metric caches for grid search at start of
+        validation epoch.
+    validation_step(batch, batch_idx)
+        Script for step of validation epoch.
+    on_validation_epoch_end()
+        Perform grid search to determine optimal threshold for classification
+        metrics.
+    on_test_epoch_start()
+        Reinitialize table of classification metrics for test set.
+    test_step(batch, batch_idx)
+        Script for step of test epoch.
+    on_test_epoch_end
+        Computes mean classification metrics at end of test epoch.
+    forward(feat, post_proc=True)
+        Performs single prediction step for input primary structure.
     """
 
     def __init__(

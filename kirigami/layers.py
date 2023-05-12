@@ -163,12 +163,6 @@ class ResNetBlock(nn.Module):
         self.act2 = getattr(nn, act)()
 
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        ipt : torch.Tensor
-            Input tensor corresponding to activation of previous block.
-        """
         out = ipt
         out = self.conv1(out)
         out = self.norm1(out)
@@ -265,10 +259,4 @@ class ResNet(nn.Module):
         self.trunk = nn.Sequential(*trunk_list)
 
     def forward(self, ipt: torch.Tensor) -> torch.Tensor:
-        """
-        Parameters
-        ----------
-        ipt : torch.Tensor
-            Input tensor corresponding to embedded sequence.
-        """
         return self.trunk(ipt.float())

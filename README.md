@@ -59,7 +59,7 @@ git lfs pull
 python3 -m venv kirigami-venv
 source kirigami-venv/bin/activate
 pip3 install -r requirements.txt
-python run.py predict
+python run.py predict && cat data/predict/output/bpRNA_CRW_15573.dbn
 ```
 
 ## Usage

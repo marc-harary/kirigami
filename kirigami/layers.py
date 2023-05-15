@@ -56,6 +56,15 @@ class Canonicalize(nn.Module):
 class Greedy(nn.Module):
     """
     Performs greedy post-processing.
+
+    Attributes
+    ----------
+    symmetrize : kirigami.layers.Symmetrize
+        Enforces first contraint (symmetry).
+    remove_sharp : kirigami.layers.RemoveSharp
+        Enforces second contraint (no sharp angles).
+    canonicalize : kirigami.layers.Canonicalize
+        Enforces third contraint (no non-canonical pairs).
     """
 
     def __init__(self):

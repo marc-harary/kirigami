@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple, Union
 import torch
 from tqdm import tqdm
 from torch.utils.data import DataLoader
@@ -10,6 +10,52 @@ from kirigami.utils import embed_fasta, embed_dbn
 class DataModule(pl.LightningDataModule):
     """
     Kirigami API for reading, writing, and embedding data.
+
+    Attributes
+    ----------
+    bprna_dir : `pathlib.Path`
+        Path to directory containing bpRNA data.
+    input_dir : `pathlib.Path`
+        Path to directory for input FASTA files for prediction.
+    output_dir : `pathlib.Path`
+        Path to directory for output DBN files for prediction.
+    train_path : `pathlib.Path`
+        Path to bpRNA DBN files for training.
+    val_path : `pathlib.Path`
+        Path to bpRNA DBN files for validation.
+    test_path : `pathlib.Path`
+        Path to bpRNA DBN files for testing.
+    train_dataset : list
+        List of embedded bpRNA samples for training.
+    val_dataset : list
+        List of embedded bpRNA samples for validation.
+    test_dataset : list
+        List of embedded bpRNA samples for testing.
+    predict_dataset : list
+        List of embedded FASTA samples for prediction.
+    predict_mols : list
+        List of names of FASTA samples for prediction.
+    predict_fastas : list
+        List of original FASTA strings for prediction.
+
+    Methods
+    -------
+    prepare_data()
+        Embeds bpRNA files if not already embedded.
+    setup(stage: str)
+        Reads embedded data from disk for corresponding stage of Kirigami
+        pipeline and stores in corresponding dataset attribute.
+    train_dataloader()
+        Returns `torch.data.Dataloader` object for training dataset.
+    val_dataloader()
+        Returns `torch.data.Dataloader` object for validation dataset.
+    test_dataloader()
+        Returns `torch.data.Dataloader` object for test dataset.
+    predict_dataloader()
+        Returns `torch.data.Dataloader` object for prediction dataset.
+    _collate_fn(batch: torch.Tensor)
+        Collation function for `Dataloader`s; performs outer-concatenation and
+        one-hot embedding.
     """
 
     def __init__(
@@ -100,7 +146,26 @@ class DataModule(pl.LightningDataModule):
             batch_size=1,
         )
 
-    def _collate_fn(self, batch):
+    def _collate_fn(
+        self, batch: torch.Tensor
+    ) -> Union[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
+        """
+        Collation function for `Dataloader`s; performs outer-concatenation and
+        one-hot embedding.
+
+        Parameters
+        ----------
+        batch : torch.Tensor
+            Tensor corresponding to input FASTA file and, if applicable,
+            ground truth adjacency matrix.
+
+        Returns
+        -------
+        fasta : torch.Tensor
+            Embedded FASTA string.
+        con : torch.Tensor
+            Ground truth adjacency matrix if applicable.
+        """
         (batch,) = batch
         fasta = batch[0]
         fasta = fasta[..., None]

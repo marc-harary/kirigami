@@ -18,8 +18,9 @@ class KirigamiModule(pl.LightningModule):
     ----------
     threshold : float
         Pass
-    optim : Pass
-        Pass
+    optim : str
+        Name of `torch.optim.Optimizer` object to be instantiated for training
+        by `configure_optimizers`.
     lr : float
         Learning rate for training.
     model : kirigami.layers.ResNet

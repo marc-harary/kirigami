@@ -8,6 +8,9 @@ From [Wikipedia](https://en.wikipedia.org/wiki/Kirigami):
 
 The Kirigami pipeline both folds RNA molecules via a fully convolutional neural network (FCN) and uses Nussinov-style dynamic programming to recursively cut them into subsequences for pre- and post-processing.
 
+Kirigami obtains state-of-the-art (SOTA) performance on the bpRNA test set. Below is the table of results of Kirigami and other SOTA models on TS0:
+<img src="figs/repo-fig1.svg">
+
 ## Overview
 
 For ease of use and reproducibility, all scripts are written idiomatically according to the [Lightning](https://www.pytorchlightning.ai) specification for PyTorch with as little application-specific code as possible. The five principal classes comprising the module are:
@@ -56,7 +59,7 @@ git lfs pull
 python3 -m venv kirigami-venv
 source kirigami-venv/bin/activate
 pip3 install -r requirements.txt
-python3 run.py test 
+python run.py predict
 ```
 
 ## Usage
@@ -153,3 +156,5 @@ These are:
 4. `dilations`: The dilations for said convolutional layers;
 5. `activation`: The class name for the [non-linearities](https://pytorch.org/docs/stable/nn.html#non-linear-activations-weighted-sum-nonlinearit ) in each block;
 6. `dropout`: The dropout probability for the `torch.nn.Dropout` layer in each block.
+
+Respectively, the default parameters as used in `weights/main.ckpt` are `32, 32, (11, 11), (1, 1), "ReLU", 0.15`.

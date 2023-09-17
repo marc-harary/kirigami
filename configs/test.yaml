@@ -1,5 +1,5 @@
 # pytorch_lightning==2.0.0
-seed_everything: 3459306840
+seed_everything: 123
 trainer:
   accelerator: auto
   strategy: auto
@@ -43,18 +43,19 @@ model:
   n_blocks: 32
   n_channels: 32
   kernel_sizes:
-  - 11
-  - 11
+  - 3
+  - 3
   dilations:
   - 1
   - 1
   activation: ReLU
-  dropout: 0.15
-  optim: Adam
-  lr: 0.0001
+  dropout: 0.5
+  optim: SGD
+  lr: 0.05
+  weight_decay: 0
 data:
   bprna_dir: null
   input_dir: null
   output_dir: null
-ckpt_path: weights/main.ckpt # weights/11x11.pt
+ckpt_path: kirigami/l7kkq4z6/checkpoints/epoch=99-step=1081400.ckpt
 verbose: true

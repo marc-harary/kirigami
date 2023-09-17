@@ -5,55 +5,72 @@ from torch import nn
 from kirigami.constants import BASE_PRIMES, MIN_DIST, PAIRS
 
 
-class Symmetrize(nn.Module):
+class Symmetrize(torch.jit.ScriptModule):
     """
     Symmetrizes tensor along last dimension.
     """
 
     def __init__(self):
-        super().__init__()
+        super(Symmetrize, self).__init__()
 
+    @torch.jit.script_method
     def forward(self, ipt):
         return (ipt + ipt.transpose(-1, -2)) / 2
 
 
-class RemoveSharp(nn.Module):
+class RemoveSharp(torch.jit.ScriptModule):
     """
     Removes sharp angles from base-pairing probabilities.
     """
 
     def __init__(self):
-        super().__init__()
+        super(RemoveSharp, self).__init__()
+        self.min_dist = MIN_DIST
 
+    @torch.jit.script_method
     def forward(self, ipt):
-        return ipt.tril(-MIN_DIST) + ipt.triu(MIN_DIST)
+        return ipt.tril(-self.min_dist) + ipt.triu(self.min_dist)
 
 
-class Canonicalize(nn.Module):
+class Canonicalize(torch.jit.ScriptModule):
     """
     Excludes non-canonical base pairs.
     """
 
     def __init__(self):
-        super().__init__()
+        super(Canonicalize, self).__init__()
+        self.base_primes = nn.Parameter(BASE_PRIMES)
+        self.pairs = list(PAIRS)
 
+    @torch.jit.script_method
     def forward(self, con, feat):
         con_ = con.squeeze()
-        seq = feat.squeeze()[: len(BASE_PRIMES), :, 0]
-        pairs = BASE_PRIMES.to(seq.device)[seq.argmax(0)]
+        seq = feat.squeeze()[: len(self.base_primes), :, 0]
+        pairs = self.base_primes.to(seq.device)[seq.argmax(0)]
         pair_mat = pairs.outer(pairs)
-        pair_mask = torch.zeros(con_.shape, dtype=bool, device=con_.device)
-        for pair in PAIRS:
-            pair_mask = torch.logical_or(pair_mask, pair_mat == pair)
+        pair_mask = torch.zeros(con_.shape, dtype=torch.bool, device=con_.device)
+
+        # convert PAIRS set to a list
+        for pair in self.pairs:
+            pair_mask = torch.logical_or(pair_mask, pair_mat.eq(pair))
+
         vals, _ = seq.max(0)
-        degen = vals < 1.0
-        pair_mask[degen, :] = True  # do not filter degenerate pairs
-        pair_mask[:, degen] = True
-        con_[~pair_mask] = 0.0
+        degen = vals.lt(1.0)
+
+        # use masked_fill_ instead of index_fill_
+        pair_mask = torch.where(
+            degen.unsqueeze(1), torch.ones_like(pair_mask), pair_mask
+        )
+        pair_mask = torch.where(
+            degen.unsqueeze(0), torch.ones_like(pair_mask), pair_mask
+        )
+
+        con_ = torch.where(~pair_mask, torch.zeros_like(con_), con_)
+
         return con_.reshape_as(con)
 
 
-class Greedy(nn.Module):
+class Greedy(torch.jit.ScriptModule):
     """
     Performs greedy post-processing.
 
@@ -68,15 +85,16 @@ class Greedy(nn.Module):
     """
 
     def __init__(self):
-        super().__init__()
+        super(Greedy, self).__init__()
         self.symmetrize = Symmetrize()
         self.remove_sharp = RemoveSharp()
         self.canonicalize = Canonicalize()
 
-    def forward(self, con, feat, sym_only=False):
+    @torch.jit.script_method
+    def forward(self, con, feat, sym_only: bool = False):
         con = self.symmetrize(con)
 
-        if self.training or sym_only:
+        if sym_only:
             return con
 
         con = self.remove_sharp(con)
@@ -85,15 +103,15 @@ class Greedy(nn.Module):
         con = con.squeeze()
 
         # filter for maximum one pair per base
-        length = len(con)
+        length = con.size(0)
         con_flat = con.flatten()
         idxs = con_flat.cpu().argsort(descending=True)
-        idxi = idxs % length
-        idxj = torch.div(idxs, length, rounding_mode="floor")
-        memo = torch.zeros(length, dtype=bool)
-        one_mask = torch.zeros(length, length, dtype=bool)
+        memo = torch.zeros(length, dtype=torch.bool)
+        one_mask = torch.zeros(length, length, dtype=torch.bool)
         num_pairs = 0
-        for i, j in zip(idxi, idxj):
+        for idx in range(length):
+            i = idxs[idx] % length
+            j = torch.div(idxs[idx], length, rounding_mode="floor")
             if num_pairs == length // 2:
                 break
             if memo[i] or memo[j]:
@@ -159,7 +177,7 @@ class ResNetBlock(nn.Module):
         )
         self.norm1 = torch.nn.InstanceNorm2d(n_channels)
         self.act1 = getattr(nn, act)()
-        self.drop1 = torch.nn.Dropout(p=p)
+        self.drop1 = torch.nn.Dropout2d(p=p)
         self.conv2 = torch.nn.Conv2d(
             in_channels=n_channels,
             out_channels=n_channels,
@@ -176,8 +194,7 @@ class ResNetBlock(nn.Module):
         out = self.conv1(out)
         out = self.norm1(out)
         out = self.act1(out)
-        if self.training:
-            out = self.drop1(out)
+        # out = self.drop1(out)
         out = self.conv2(out)
         out = self.norm2(out)
         out += ipt

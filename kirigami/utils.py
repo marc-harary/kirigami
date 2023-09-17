@@ -9,6 +9,7 @@ from torchmetrics.functional.classification import (
     binary_precision,
     binary_recall,
 )
+from torchmetrics.functional import pearson_corrcoef
 from kirigami.constants import PSEUDO_LEFT, PSEUDO_RIGHT, BASE_DICT
 
 
@@ -277,7 +278,7 @@ def embed_dbn(path: str) -> List[Tuple[torch.Tensor, torch.Tensor]]:
 def get_con_metrics(
     prd: torch.Tensor,
     grd: torch.Tensor,
-    threshold: float,
+    threshold: float = .5,
 ) -> Dict[str, float]:
     """
     Computes MCC, F1 score, precision, and recall metrics of predicted
@@ -300,9 +301,23 @@ def get_con_metrics(
     idxs = torch.ones_like(prd.squeeze(), dtype=bool).triu(1)
     grd_flat = grd.squeeze()[idxs].int()
     prd_flat = prd.squeeze()[idxs]
+    # mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold).item(),
+    # mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold)
+    # f1 = binary_f1_score(prd_flat, grd_flat, threshold)#.item(),
+    # precision = binary_precision(prd_flat, grd_flat, threshold)#.item(),
+    # recall = binary_recall(prd_flat, grd_flat, threshold)#.item(),
+    mcc = f1 = precision = recall = 0
+    pcc = pearson_corrcoef(prd_flat, grd_flat.float())#.item(),
+    # if pcc is nan, then just return mcc
+    if torch.isnan(pcc).item():
+        mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold).item()
+        pcc = mcc
+    else:
+        pcc = pcc#.item()
     return dict(
-        mcc=binary_matthews_corrcoef(prd_flat, grd_flat, threshold).item(),
-        f1=binary_f1_score(prd_flat, grd_flat, threshold).item(),
-        precision=binary_precision(prd_flat, grd_flat, threshold).item(),
-        recall=binary_recall(prd_flat, grd_flat, threshold).item(),
+        mcc=mcc,
+        f1=f1,
+        precision=precision,
+        recall=recall,
+        pcc=pcc,
     )

@@ -2,8 +2,7 @@
 
 [![arXiv](https://img.shields.io/badge/arXiv-2406.02381-b31b1b.svg)](https://arxiv.org/abs/2406.02381)
 
-** Kirigami: large convolutional kernels improve deep learning-based RNA secondary structure prediction **
-- [arXiv:2406.02381](https://arxiv.org/abs/2406.02381)
+[**Kirigami: large convolutional kernels improve deep learning-based RNA secondary structure prediction**](https://arxiv.org/abs/2406.02381)
 
 RNA secondary structure prediction via deep learning.
 

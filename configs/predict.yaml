@@ -52,8 +52,6 @@ model:
   - 1
   activation: ReLU
   dropout: 0.15
-  optim: Adam
-  lr: 0.0001
 data:
   bprna_dir: null
   input_dir: null

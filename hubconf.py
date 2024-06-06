@@ -2,6 +2,7 @@
 
 dependencies = ['torch']
 
+import os
 from kirigami import KirigamiModule
 
 def kirigami(pretrained=True, checkpoint_path='weights/main.ckpt'):

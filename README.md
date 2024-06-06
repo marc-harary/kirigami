@@ -4,8 +4,6 @@
 
 [**Kirigami: large convolutional kernels improve deep learning-based RNA secondary structure prediction**](https://arxiv.org/abs/2406.02381)
 
-RNA secondary structure prediction via deep learning.
-
 From [Wikipedia](https://en.wikipedia.org/wiki/Kirigami):
 
 > Kirigami (切り紙) is a variation of origami, the Japanese art of folding paper. In kirigami, the paper is cut as well as being folded, resulting in a three-dimensional design that stands away from the page.
@@ -15,110 +13,33 @@ The Kirigami pipeline both folds RNA molecules via a fully convolutional neural 
 Kirigami obtains state-of-the-art (SOTA) performance on the bpRNA test set. Below is the table of results of Kirigami and other SOTA models on TS0:
 <img src="figs/repo-fig1.svg">
 
-## Overview
-
-For ease of use and reproducibility, all scripts are written idiomatically according to the [Lightning](https://www.pytorchlightning.ai) specification for PyTorch with as little application-specific code as possible. The five principal classes comprising the module are:
-
-1. `kirigami.layers.ResNet`: A standard `torch.nn.Module` comprising the main network;
-2. `kirigami.layers.Greedy`: A simple constraint-satisfaction problem (CSP) solver that enforces constraints on the output matrix;
-3. `kirigami.data.DataModule`: A subclass of [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html?highlight=datamodule) that downloads, embeds, pickles, loads, and collates samples;
-4. `kirigami.data.KirigamiModule`: A subclass of [LightningModule](https://lightning.ai/docs/pytorch/stable/common/lightning_module.html) that wraps `kirigami.layers.ResNet` and includes a small number of hooks for reproducible logging, checkpointing, loops for training, etc.
-5. `kirigami.writer.DbnWriter`: A subclass of [BasePredictionWriter](https://lightning.ai/docs/pytorch/latest/api/lightning.pytorch.callbacks.BasePredictionWriter.html) that writes predicted tensors to files in [dot-bracket notation](https://www.tbi.univie.ac.at/RNA/ViennaRNA/doc/html/rna_structure_notations.html).
-
-```bash
-├── LICENSE
-├── README.md
-├── configs
-│   ├── predict.yaml
-│   └── test.yaml
-├── data
-│   ├── bpRNA
-│   │   ├── TR0.dbn
-│   │   ├── TS0.dbn
-│   │   └── VL0.dbn
-│   └── predict
-│       └── input
-│           └── bpRNA_CRW_15573.fasta
-├── kirigami
-│   ├── __init__.py
-│   ├── constants.py
-│   ├── data.py
-│   ├── layers.py
-│   ├── learner.py
-│   ├── nussinov.pyx
-│   ├── utils.py
-│   └── writer.py
-├── requirements.txt
-├── run.py
-└── weights
-    └── main.ckpt
-```
-
 ## Installation
-Note that [git-lfs](https://git-lfs.com/) is required to download the weights. Otherwise, no specific setup is necessary. For example, one might run:
-```bash
-git clone https://github.com/marc-harary/kirigami
-cd kirigami
-git lfs pull
-python3 -m venv kirigami-venv
-source kirigami-venv/bin/activate
-pip3 install -r requirements.txt
-python run.py predict && cat data/predict/output/bpRNA_CRW_15573.dbn
+
+The easiest way to download and interact with Kirigami is via [PyTorch Hub](https://pytorch.org/hub/). Simply run
+```python
+import torch
+model = torch.hub.load('marc-harary/kirigami', 'kirigami', pretrained=True)
+print(model("UUCCUGACAAUAUUAUCGCGAUAGAACCACCUGAAUCCAUACCGAACUCAGAAGUGAAAUGUCGUAGUUCCGAUGGUAGUGUGAGGUUUCCUUAUGUGAGAGUAGGAGAUUGUCAGGAAA"))
+# .(((((((((......(((((((....(((((((.............))))..)))...)))))).).(((.((....((((((((...))))))))....)).)))..)))))))))..
 ```
+This snippet will automatically pull and cache this repo for immediate deployment.
 
 ## Usage
 
-The primary entrypoint for Kirigami is the [LightningCLI](https://pytorch-lightning.readthedocs.io/en/1.6.5/common/lightning_cli.html), which allows for retraining or fine-tuning the model, testing it on the benchmark datasets, predicting novel structures, etc. It is used as follows:
+The `model` object above is an instance of `kirigami/learner/KirigamiModule`, which inherits from [`pytorch_lightning.LightningModule`](https://lightning.ai/docs/pytorch/stable/common/lightning_module.html). For convenience, we have implemented a `__call__` method that:
+1. Accepts a raw FASTA string,
+2. Embeds it as tensor,
+3. Maps the resulting input tensor to an predicted output label tensor, and finally
+4. Converts the label tensor to a string in [dot-bracket notation (DBN)](https://gensoft.pasteur.fr/docs/ViennaRNA/2.4.14/rna_structure_notations.html#:~:text=Structure%20(WUSS)%20notation-,Dot%2DBracket%20Notation%20(a.k.a.%20Dot%2DParenthesis%20Notation),and%20unpaired%20nucleotides%20by%20dots%20.%20.).
+A single method method call is ``all you need.''
 
-```bash
-python run.py --help
-usage: run.py [-h] [-c CONFIG] [--print_config[=flags]] {fit,validate,test,predict} ...
+## (Re)training
 
-pytorch-lightning trainer command line tool
-
-options:
-  -h, --help            Show this help message and exit.
-  -c CONFIG, --config CONFIG
-                        Path to a configuration file in json or yaml format.
-  --print_config[=flags]
-                        Print the configuration after applying all other arguments and exit. The optional flags customizes the output and are one or
-                        more keywords separated by comma. The supported flags are: comments, skip_default, skip_null.
-
-subcommands:
-  For more details of each subcommand, add it as an argument followed by --help.
-
-  {fit,validate,test,predict}
-    fit                 Runs the full optimization routine.
-    validate            Perform one evaluation epoch over the validation set.
-    test                Perform one evaluation epoch over the test set.
-    predict             Run inference on your data.
-```
-Default configuration `yaml` files in the `configs` directory, which in turn point to the weights stored in `weights/main.ckpt`. 
-
-### Prediction
-
-Please write all inputs in standard FASTA format to `data/predict/input` and then call the `KirigamiModule.predict` method simply by entering:
-```bash
-python run.py predict
-```
-Correspondingly named `dbn` files containing the predicted secondary strucure will be written to `data/predict/output`. An example file is located in `data/predict/input/bpRNA_CRW_15573.fasta`.
-
-### Testing
-
-Running 
-```bash
-python run.py test
-```
-will evaluate Kirigami on each molecule in TS0, compute accuracy metrics, and output the averages to the terminal.
-
-
-### (Re)training
-
-Although the weights of the production model are located at `weights/main.ckpt`, Kirigami can be retrained with varying hyperparameters. Simply run 
+All experiments were performed via [PyTorch Lightning](https://lightning.ai/docs/pytorch/stable). Although the weights of the production model are located at `weights/main.ckpt`, Kirigami can be retrained with varying hyperparameters. Simply run 
 ```bash
 python run.py fit --help
 ```
-for an exhaustive list of configurations.
+for an exhaustive list of configurations, displayed via [Lightning's CLI](https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.cli.LightningCLI.html#lightning.pytorch.cli.LightningCLI).
 
 To perform an exact, globally seeded replication of the experiment that generated the weights, run
 ```bash
@@ -126,39 +47,8 @@ python run.py fit
 ```
 to use the appropriate configuration file.
 
-
 ## Data
 
 Data used for training, validation, and testing are taken from the [bpRNA](https://bprna.cgrb.oregonstate.edu/) database in the form of the standard TR0, VL0, and TS0 datasets used by [SPOT-RNA](https://github.com/jaswindersingh2/SPOT-RNA), [MXfold2](https://github.com/mxfold/mxfold2), and [UFold](https://github.com/uci-cbcl/UFold). Respectively, these contain 10,814, 1,300, and 1,305 non-redundant structures. The `.dbn` files located in this repo were generated by scraping the data originally uploaded by the authors of SPOT-RNA.
 
-The data are currently written to `dbn` files in `data/bpRNA/TR0.dbn`, `data/bpRNA/VL0.dbn`, `data/bpRNA/TS0.dbn` but will be embedded as `torch.Tensor`s by the `kirigami.data.DataModule.prepare_data` method once any of the `LightningCLI` subcommands are run. Please see the documentation for the [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html) API for more detail.
-
-
-## Model architecture
-
-Kirigami consists of an extremely simple residual neural network (RNN) architecture that can be found in `kirigami/layers.py`, with primary network API being `kirigami.layers.ResNet`. The hyperparameters for the model are as follows:
-
-```bash
-<class 'kirigami.learner.KirigamiModule'>:
-  --model.n_blocks N_BLOCKS
-  		(required, type: int)
-  --model.n_channels N_CHANNELS
-  		(required, type: int)
-  --model.kernel_sizes [ITEM,...]
-  		(required, type: Tuple[int, int])
-  --model.dilations [ITEM,...]
-  		(required, type: Tuple[int, int])
-  --model.activation ACTIVATION
-  		(required, type: str)
-  --model.dropout DROPOUT
-```
-
-These are:
-1. `n_blocks`: The total number of residual neural network blocks (i.e., `kirigami.layers.ResNetBlock`);
-2. `n_channels`: The number of hidden channels for each block;
-3. `kernel_sizes`: The dimensions of the kernels for the first and second `torch.nn.Conv2D` layers in each block;
-4. `dilations`: The dilations for said convolutional layers;
-5. `activation`: The class name for the [non-linearities](https://pytorch.org/docs/stable/nn.html#non-linear-activations-weighted-sum-nonlinearit ) in each block;
-6. `dropout`: The dropout probability for the `torch.nn.Dropout` layer in each block.
-
-Respectively, the default parameters as used in `weights/main.ckpt` are `32, 32, (11, 11), (1, 1), "ReLU", 0.15`.
+The data are currently written to `dbn` files in `data/bpRNA/TR0.dbn`, `data/bpRNA/VL0.dbn`, `data/bpRNA/TS0.dbn` but will be embedded as `torch.Tensor`s by the `kirigami.data.DataModule.prepare_data` method once any of the [`LightningCLI`]( subcommands are run. Please see the documentation for the [LightningDataModule](https://lightning.ai/docs/pytorch/stable/data/datamodule.html) API for more detail.

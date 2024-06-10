@@ -275,10 +275,34 @@ def embed_dbn(path: str) -> List[Tuple[torch.Tensor, torch.Tensor]]:
     return out
 
 
+def outer_concat(fasta):
+    """
+    Performs outer concatenation on input one-hot encoded FASTA sequence.
+
+    Parameters
+    ----------
+    fasta : torch.Tensor of shape (4, n)
+        Embedded sequence.
+
+    Returns
+    -------
+    fasta : torch.Tensor of shape (1, 8, n, n)
+        Outer-concatenated sequence.
+    """
+    fasta = fasta.unsqueeze(-1)
+    repeats = fasta.shape[-2]
+    fasta = fasta.expand(-1, -1, repeats)
+    fasta_t = fasta.transpose(-1, -2)
+    fasta = torch.cat([fasta, fasta_t], dim=-3)
+    fasta = fasta.unsqueeze(0)
+    fasta = fasta.to(torch.float32)
+    return fasta
+
+
 def get_con_metrics(
     prd: torch.Tensor,
     grd: torch.Tensor,
-    threshold: float = .5,
+    threshold: float = 0.5,
 ) -> Dict[str, float]:
     """
     Computes MCC, F1 score, precision, and recall metrics of predicted
@@ -301,19 +325,19 @@ def get_con_metrics(
     idxs = torch.ones_like(prd.squeeze(), dtype=bool).triu(1)
     grd_flat = grd.squeeze()[idxs].int()
     prd_flat = prd.squeeze()[idxs]
-    # mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold).item(),
-    # mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold)
-    # f1 = binary_f1_score(prd_flat, grd_flat, threshold)#.item(),
-    # precision = binary_precision(prd_flat, grd_flat, threshold)#.item(),
-    # recall = binary_recall(prd_flat, grd_flat, threshold)#.item(),
-    mcc = f1 = precision = recall = 0
-    pcc = pearson_corrcoef(prd_flat, grd_flat.float())#.item(),
+
+    mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold)
+    f1 = binary_f1_score(prd_flat, grd_flat, threshold).item(),
+    precision = binary_precision(prd_flat, grd_flat, threshold).item(),
+    recall = binary_recall(prd_flat, grd_flat, threshold).item(),
+    pcc = pearson_corrcoef(prd_flat, grd_flat.float()).item(),
+
     # if pcc is nan, then just return mcc
     if torch.isnan(pcc).item():
         mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold).item()
         pcc = mcc
     else:
-        pcc = pcc#.item()
+        pcc = pcc.item()
     return dict(
         mcc=mcc,
         f1=f1,

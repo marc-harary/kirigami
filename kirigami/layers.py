@@ -267,7 +267,7 @@ class ResNet(nn.Module):
         self.activation = activation
         self.dropout = dropout
         trunk_list = [
-            nn.Conv2d(8, n_channels, kernel_size=1, padding=0),
+            nn.Conv2d(2 * len(BASE_PRIMES), n_channels, kernel_size=1, padding=0),
             getattr(nn, activation)(),
         ]
         for i in range(n_blocks):

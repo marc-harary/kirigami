@@ -2,10 +2,10 @@
 
 [![arXiv](https://img.shields.io/badge/arXiv-2406.02381-b31b1b.svg)](https://arxiv.org/abs/2406.02381)
 
-Kirigami is a state-of-the-art (SOTA) RNA secondary structure prediction program.
+[**Kirigami: large convolutional kernels improve deep learning-based RNA secondary structure prediction**](https://arxiv.org/abs/2406.02381)
 
-On a standardized test set from bpRNA [bpRNA](https://bprna.cgrb.oregonstate.edu/), Kirigami exceeds the performance of other programs like [SPOT-RNA](https://github.com/jaswindersingh2/SPOT-RNA), [MXfold2](https://github.com/mxfold/mxfold2), and [UFold](https://github.com/uci-cbcl/UFold). 
-Please see our [arXiv preprint](https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.cli.LightningCLI.html#lightning.pytorch.cli.LightningCLI) for further detail.
+Kirigami is a state-of-the-art (SOTA) RNA secondary structure prediction program. On a standardized test set from bpRNA [bpRNA](https://bprna.cgrb.oregonstate.edu/), Kirigami exceeds the performance of other programs like [SPOT-RNA](https://github.com/jaswindersingh2/SPOT-RNA), [MXfold2](https://github.com/mxfold/mxfold2), and [UFold](https://github.com/uci-cbcl/UFold). 
+
 
 ## Installation
 
@@ -13,20 +13,17 @@ The easiest way to download and interact with Kirigami is via [PyTorch Hub](http
 ```python
 import torch
 model = torch.hub.load('marc-harary/kirigami', 'kirigami', pretrained=True)
-model("UUCCUGACAAUAUUAUCGCGAUAGAACCACCUGAAUCCAUACCGAACUCAGAAGUGAAAUGUCGUAGUUCCGAUGGUAGUGUGAGGUUUCCUUAUGUGAGAGUAGGAGAUUGUCAGGAAA")
-# .(((((((((......(((((((....(((((((.............))))..)))...)))))).).(((.((....((((((((...))))))))....)).)))..)))))))))..
 ```
 This snippet will automatically pull and cache this repo for immediate deployment.
 
 ## Usage
 
-The `model` object above is an instance of `kirigami/learner/KirigamiModule`, which inherits from [`pytorch_lightning.LightningModule`](https://lightning.ai/docs/pytorch/stable/common/lightning_module.html). For convenience, we have implemented a `__call__` method that:
-1. Accepts a raw FASTA string,
-2. Embeds it as tensor,
-3. Maps the resulting input tensor to an predicted output label tensor, and finally
-4. Converts the label tensor to a string in [dot-bracket notation (DBN)](https://gensoft.pasteur.fr/docs/ViennaRNA/2.4.14/rna_structure_notations.html#:~:text=Structure%20(WUSS)%20notation-,Dot%2DBracket%20Notation%20(a.k.a.%20Dot%2DParenthesis%20Notation),and%20unpaired%20nucleotides%20by%20dots%20.%20.).
-
-A single method method call is ``all you need.''
+For a given FASTA sequence, run
+```python
+model("UUCCUGACAAUAUUAUCGCGAUAGAACCACCUGAAUCCAUACCGAACUCAGAAGUGAAAUGUCGUAGUUCCGAUGGUAGUGUGAGGUUUCCUUAUGUGAGAGUAGGAGAUUGUCAGGAAA")
+# .(((((((((......(((((((....(((((((.............))))..)))...)))))).).(((.((....((((((((...))))))))....)).)))..)))))))))..
+```
+to invoke a `__call__` method that embeds the FASTA string and return a prediction in [dot-bracket notation (DBN)](https://gensoft.pasteur.fr/docs/ViennaRNA/2.4.14/rna_structure_notations.html#:~:text=Structure%20(WUSS)%20notation-,Dot%2DBracket%20Notation%20(a.k.a.%20Dot%2DParenthesis%20Notation),and%20unpaired%20nucleotides%20by%20dots%20.%20.).
 
 ## (Re)training
 

@@ -43,19 +43,16 @@ model:
   n_blocks: 32
   n_channels: 32
   kernel_sizes:
-  - 3
-  - 3
+  - 11
+  - 11
   dilations:
   - 1
   - 1
   activation: ReLU
   dropout: 0.5
-  optim: SGD
-  lr: 0.05
-  weight_decay: 0
 data:
   bprna_dir: null
   input_dir: null
   output_dir: null
-ckpt_path: kirigami/l7kkq4z6/checkpoints/epoch=99-step=1081400.ckpt
+ckpt_path: weights/main.ckpt 
 verbose: true

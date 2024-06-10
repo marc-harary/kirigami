@@ -8,7 +8,7 @@ from kirigami.layers import ResNet, Greedy
 from kirigami.constants import GRID
 from kirigami.utils import get_con_metrics
 import kirigami
-from kirigami.utils import _embed_fasta, mat2db
+from kirigami.utils import _embed_fasta, mat2db, outer_concat
 
 
 class KirigamiModule(pl.LightningModule):
@@ -68,7 +68,6 @@ class KirigamiModule(pl.LightningModule):
         self.n_val = 0
 
     def test_step(self, batch, batch_idx):
-        # forward pass
         self.n_val += 1
         feat, grd = batch
         prd = self.model(feat)
@@ -93,15 +92,7 @@ class KirigamiModule(pl.LightningModule):
 
     def __call__(self, seq):
         fasta = _embed_fasta(seq.upper())
-        fasta = fasta[..., None]
-        fasta = torch.cat(fasta.shape[-2] * [fasta], dim=-1)
-        fasta_t = fasta.transpose(-1, -2)
-        fasta = torch.cat([fasta, fasta_t], dim=-3)
-        fasta = fasta[None, ...]
-        fasta = fasta.float()
-
+        fasta = outer_concat(fasta)
         prd = self.forward(fasta)
-
         dbn = mat2db(prd)
-
         return dbn

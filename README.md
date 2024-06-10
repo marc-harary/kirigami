@@ -28,15 +28,13 @@ to invoke a convenience `__call__` method that embeds the FASTA string and retur
 
 All experiments were performed via [PyTorch Lightning](https://lightning.ai/docs/pytorch/stable). Although the weights of the production model are located at `weights/main.ckpt`, Kirigami can be retrained with varying hyperparameters. Run 
 ```bash
-python run.py fit --help
+python run.py --help
 ```
-for an exhaustive list of configurations, displayed via [Lightning's CLI](https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.cli.LightningCLI.html#lightning.pytorch.cli.LightningCLI).
-
-To perform an exact, globally seeded replication of the experiment that generated the weights, run
+for an exhaustive list of configurations, displayed via [Lightning's CLI](https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.cli.LightningCLI.html#lightning.pytorch.cli.LightningCLI). To perform an exact, globally seeded replication of the experiment that generated the weights, run
 ```bash
 python run.py fit
 ```
-to use the appropriate configuration file.
+to automatically use the appropriate configuration file.
 
 ## Data
 

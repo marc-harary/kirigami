@@ -1,6 +1,6 @@
 # hubconf.py
 
-dependencies = ['torch']
+dependencies = ['torch', 'pytorch-lightning', 'torchmetrics']
 
 import os
 from kirigami import KirigamiModule

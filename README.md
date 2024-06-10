@@ -4,7 +4,7 @@
 
 [**Kirigami: large convolutional kernels improve deep learning-based RNA secondary structure prediction**](https://arxiv.org/abs/2406.02381)
 
-Kirigami is a state-of-the-art (SOTA) RNA secondary structure prediction program. On a standardized test set from bpRNA [bpRNA](https://bprna.cgrb.oregonstate.edu/), Kirigami exceeds the performance of other programs like [SPOT-RNA](https://github.com/jaswindersingh2/SPOT-RNA), [MXfold2](https://github.com/mxfold/mxfold2), and [UFold](https://github.com/uci-cbcl/UFold). 
+Kirigami is a state-of-the-art (SOTA) AI model for RNA secondary structure prediction. On a standardized test set from [bpRNA](https://bprna.cgrb.oregonstate.edu/), Kirigami exceeds the performance of other programs like [SPOT-RNA](https://github.com/jaswindersingh2/SPOT-RNA), [MXfold2](https://github.com/mxfold/mxfold2), and [UFold](https://github.com/uci-cbcl/UFold). 
 
 
 ## Installation
@@ -19,7 +19,7 @@ model = torch.hub.load('marc-harary/kirigami', 'kirigami', pretrained=True)
 
 For a given FASTA sequence, run
 ```python
-model("GGGGCGAGCUGCAGCCCCAGUGAAUCAAGUGCAGC")
+model('GGGGCGAGCUGCAGCCCCAGUGAAUCAAGUGCAGC')
 # '.((((........))))..................'
 ```
 to invoke a convenience `__call__` method that embeds the FASTA string and returns a prediction in [dot-bracket notation (DBN)](https://gensoft.pasteur.fr/docs/ViennaRNA/2.4.14/rna_structure_notations.html#:~:text=Structure%20(WUSS)%20notation-,Dot%2DBracket%20Notation%20(a.k.a.%20Dot%2DParenthesis%20Notation),and%20unpaired%20nucleotides%20by%20dots%20.%20.).

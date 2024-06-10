@@ -7,12 +7,6 @@ from kirigami.utils import mat2db
 
 
 class DbnWriter(BasePredictionWriter):
-    """
-    Inherits from pytorch_lightning.callbacks.BasePredictionWriter to save
-    adjacency matrices returned by the prediction loop in `KirigamiModule` to
-    dot-bracket files.
-    """
-
     def __init__(self):
         super().__init__(write_interval="epoch")
 
@@ -26,9 +20,6 @@ class DbnWriter(BasePredictionWriter):
         batch_idx: int,
         dataloader_idx: int,
     ) -> None:
-        """
-        Writes dot-bracket file for all predicted label in test batch.
-        """
         opt_dir = trainer.datamodule.output_dir
         mol = trainer.datamodule.predict_mols[batch_idx]
         fasta = trainer.datamodule.predict_fastas[batch_idx]
@@ -43,9 +34,6 @@ class DbnWriter(BasePredictionWriter):
         predictions: List[torch.Tensor],
         batch_indices: torch.Tensor,
     ) -> None:
-        """
-        Writes dot-bracket files for all predicted labels at end of test epoch.
-        """
         opt_dir = trainer.datamodule.output_dir
         for batch_idx in tqdm(batch_indices[0]):
             batch_idx = batch_idx[0]

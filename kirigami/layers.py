@@ -194,12 +194,10 @@ class ResNetBlock(nn.Module):
         out = self.conv1(out)
         out = self.norm1(out)
         out = self.act1(out)
-        # out = self.drop1(out)
         out = self.conv2(out)
         out = self.norm2(out)
         out += ipt
         out = self.act2(out)
-        # out = 0.5 * (out + out.transpose(-1, -2))
         return out
 
     @staticmethod

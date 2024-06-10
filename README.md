@@ -14,20 +14,19 @@ The easiest way to download and interact with Kirigami is via [PyTorch Hub](http
 import torch
 model = torch.hub.load('marc-harary/kirigami', 'kirigami', pretrained=True)
 ```
-This snippet will automatically pull and cache this repo for immediate deployment.
 
 ## Usage
 
 For a given FASTA sequence, run
 ```python
-model("UUCCUGACAAUAUUAUCGCGAUAGAACCACCUGAAUCCAUACCGAACUCAGAAGUGAAAUGUCGUAGUUCCGAUGGUAGUGUGAGGUUUCCUUAUGUGAGAGUAGGAGAUUGUCAGGAAA")
-# .(((((((((......(((((((....(((((((.............))))..)))...)))))).).(((.((....((((((((...))))))))....)).)))..)))))))))..
+model("GGGGCGAGCUGCAGCCCCAGUGAAUCAAGUGCAGC")
+# '.((((........))))..................'
 ```
-to invoke a `__call__` method that embeds the FASTA string and return a prediction in [dot-bracket notation (DBN)](https://gensoft.pasteur.fr/docs/ViennaRNA/2.4.14/rna_structure_notations.html#:~:text=Structure%20(WUSS)%20notation-,Dot%2DBracket%20Notation%20(a.k.a.%20Dot%2DParenthesis%20Notation),and%20unpaired%20nucleotides%20by%20dots%20.%20.).
+to invoke a convenience `__call__` method that embeds the FASTA string and returns a prediction in [dot-bracket notation (DBN)](https://gensoft.pasteur.fr/docs/ViennaRNA/2.4.14/rna_structure_notations.html#:~:text=Structure%20(WUSS)%20notation-,Dot%2DBracket%20Notation%20(a.k.a.%20Dot%2DParenthesis%20Notation),and%20unpaired%20nucleotides%20by%20dots%20.%20.).
 
 ## (Re)training
 
-All experiments were performed via [PyTorch Lightning](https://lightning.ai/docs/pytorch/stable). Although the weights of the production model are located at `weights/main.ckpt`, Kirigami can be retrained with varying hyperparameters. Simply run 
+All experiments were performed via [PyTorch Lightning](https://lightning.ai/docs/pytorch/stable). Although the weights of the production model are located at `weights/main.ckpt`, Kirigami can be retrained with varying hyperparameters. Run 
 ```bash
 python run.py fit --help
 ```

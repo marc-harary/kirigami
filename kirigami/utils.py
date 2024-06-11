@@ -322,26 +322,25 @@ def get_con_metrics(
     out : dict
         Dictionary of classification metrics.
     """
+    # get upper triangles
     idxs = torch.ones_like(prd.squeeze(), dtype=bool).triu(1)
     grd_flat = grd.squeeze()[idxs].int()
     prd_flat = prd.squeeze()[idxs]
 
-    mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold)
-    f1 = binary_f1_score(prd_flat, grd_flat, threshold).item(),
-    precision = binary_precision(prd_flat, grd_flat, threshold).item(),
-    recall = binary_recall(prd_flat, grd_flat, threshold).item(),
-    pcc = pearson_corrcoef(prd_flat, grd_flat.float()).item(),
-
+    mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold).item()
+    f1 = binary_f1_score(prd_flat, grd_flat, threshold).item()
+    precision = binary_precision(prd_flat, grd_flat, threshold).item()
+    recall = binary_recall(prd_flat, grd_flat, threshold).item()
+    pcc = pearson_corrcoef(prd_flat, grd_flat.float()).item()
     # if pcc is nan, then just return mcc
-    if torch.isnan(pcc).item():
-        mcc = binary_matthews_corrcoef(prd_flat, grd_flat, threshold).item()
-        pcc = mcc
-    else:
-        pcc = pcc.item()
-    return dict(
+    pcc = mcc if torch.isnan(pcc) else pcc
+
+    out = dict(
         mcc=mcc,
         f1=f1,
         precision=precision,
         recall=recall,
         pcc=pcc,
     )
+
+    return out
